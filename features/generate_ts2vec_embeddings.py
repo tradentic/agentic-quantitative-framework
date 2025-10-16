@@ -10,6 +10,27 @@ from typing import Any
 import numpy as np
 from framework.supabase_client import EmbeddingRecord
 
+EMBEDDING_DIM = 128
+
+
+def _clamp_embedding(vector: Sequence[float] | np.ndarray, *, dim: int = EMBEDDING_DIM) -> np.ndarray:
+    """Pad or truncate an embedding vector to match the pgvector dimension."""
+
+    array = np.asarray(vector, dtype=float)
+    if array.ndim == 0:
+        array = array.reshape(1)
+    elif array.ndim > 1:
+        array = array.reshape(-1)
+
+    length = array.shape[0]
+    if length >= dim:
+        return array[:dim]
+
+    padded = np.zeros(dim, dtype=float)
+    if length:
+        padded[:length] = array
+    return padded
+
 
 def _load_ts2vec() -> Any:
     if util.find_spec("ts2vec") is None:
@@ -63,12 +84,14 @@ def generate_ts2vec_features(
     embeddings = encoder.fit_transform(values)
 
     base_meta = {**(metadata or {}), "generated_at": datetime.utcnow().isoformat()}
+    base_meta["embedding_dim"] = EMBEDDING_DIM
     rows: list[dict[str, Any]] = []
     for vector, timestamp in zip(embeddings, timestamps, strict=False):
+        normalized_vector = _clamp_embedding(vector)
         record = EmbeddingRecord(
             asset_symbol=asset_symbol,
             time_range=_format_time_range(timestamp, window_seconds),
-            embedding=vector.tolist(),
+            embedding=normalized_vector.tolist(),
             regime_tag=regime_tag,
             label=base_meta.get("label", {}),
             meta={k: v for k, v in base_meta.items() if k != "label"},
@@ -84,11 +107,12 @@ def fallback_identity_embeddings(
 
     rows: list[dict[str, Any]] = []
     for idx, timestamp in enumerate(timestamps):
-        vector = np.pad(values[idx], (0, max(0, 128 - values.shape[1])), mode="constant")[:128]
+        vector = _clamp_embedding(values[idx])
         record = EmbeddingRecord(
             asset_symbol=asset_symbol,
             time_range=_format_time_range(timestamp, 60),
             embedding=vector.tolist(),
+            meta={"embedding_dim": EMBEDDING_DIM},
         )
         rows.append(record.dict())
     return rows
