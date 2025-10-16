@@ -52,8 +52,8 @@ deployments:
     schedule:
       # cron: "5 11 * * 2-6"
   - name: compute-intraday
-    flow_name: compute-offexchange-features
-    entrypoint: flows/compute_offexchange_features.py:compute_offexchange_features
+    flow_name: compute-intraday-features
+    entrypoint: flows/compute_intraday_features.py:compute_intraday_features
     work_pool:
       name: local-agent
     parameters:
