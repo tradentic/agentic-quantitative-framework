@@ -1,12 +1,12 @@
 # Devcontainer Overview
 
-A portable Codespaces/devcontainer that readies a **Next.js + Supabase** environment for scaffolding and local dev.
+A portable Codespaces/devcontainer that readies a **Supabase-first** environment (with Prefect tooling) for scaffolding and local dev.
 
 ## What this sets up
 
 * **Base image**: Ubuntu 24.04 with Docker‑in‑Docker
 * **Tooling**: Node **24** (Corepack/PNPM enabled), Supabase CLI, optional AI CLIs (see `scripts/`)
-* **Ports**: 3000 (Next), 4200 (Prefect UI/API), 3920/4002/4390 (Prefect background services), 54321/54322/54323/54324/54327 (Supabase stack)
+* **Ports**: 4200 (Prefect UI/API), 3920/4002/4390 (Prefect background services), 51321/51322/51323/51324/51327 (Supabase stack)
 
 ## Lifecycle hooks
 

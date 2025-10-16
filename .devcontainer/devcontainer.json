@@ -16,18 +16,17 @@
   "updateContentCommand": "bash -lc 'true'",
   "postCreateCommand": ".devcontainer/scripts/post-create.sh",
   "postStartCommand": ".devcontainer/scripts/post-start.sh",
-  "forwardPorts": [3000, 3920, 4002, 4200, 4390, 54321, 54322, 54323, 54324, 54327],
+  "forwardPorts": [3920, 4002, 4200, 4390, 51321, 51322, 51323, 51324, 51327],
   "portsAttributes": {
-    "3000": { "label": "Next.js" },
     "3920": { "label": "Prefect Background Service (scheduler)" },
     "4002": { "label": "Prefect Background Service (late runs)" },
     "4200": { "label": "Prefect UI / API" },
     "4390": { "label": "Prefect Background Service (telemetry)" },
-    "54321": { "label": "Supabase API" },
-    "54322": { "label": "Supabase Postgres" },
-    "54323": { "label": "Supabase Studio" },
-    "54324": { "label": "Supabase Mailpit" },
-    "54327": { "label": "Supabase Logflare" }
+    "51321": { "label": "Supabase API" },
+    "51322": { "label": "Supabase Postgres" },
+    "51323": { "label": "Supabase Studio" },
+    "51324": { "label": "Supabase Mailpit" },
+    "51327": { "label": "Supabase Logflare" }
   },
   "customizations": {
     "vscode": {
