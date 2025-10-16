@@ -29,6 +29,17 @@ tests = [
     "pytest>=7.4.0",
 ]
 
+[tool.setuptools.packages.find]
+include = [
+    "agents*",
+    "features*",
+    "framework*",
+    "flows*",
+    "backtest*",
+    "supabase*",
+    "use_cases*",
+]
+
 [tool.ruff]
 line-length = 100
 src = ["agents", "features", "framework", "flows", "backtest"]
