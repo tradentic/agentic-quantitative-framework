@@ -5,7 +5,7 @@ This project is fully compatible with local-first development using the `supabas
 - Docker installed
 - [Supabase CLI](https://supabase.com/docs/guides/cli)
 - Python 3.11+
-- Node.js 18+ (for the Docusaurus docs dev server)
+- Node.js 24+ (for the Docusaurus docs dev server)
 - `pip` or `uv` for Python dependency management
 
 ## Bootstrap the Repository

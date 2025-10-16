@@ -49,7 +49,7 @@ Add these ADRs in: `docs/architecture/adr/`
 - Update `.env.example` to reflect Supabase and dev container setup
 - Update `README.md` and docs nav to reflect current repo purpose
 - Refactor CI/CD workflows in `.github/` if needed — but don’t delete
-- Ensure `.devcontainer/` installs: Python 3.11, Supabase CLI, Node.js 18, Poetry or pip
+- Ensure `.devcontainer/` installs: Python 3.11, Supabase CLI, Node.js 24, Poetry or pip
 
 ---
 
