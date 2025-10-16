@@ -2,11 +2,41 @@
 
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING
+
 import numpy as np
 from numpy.typing import NDArray
 
 
-ArrayLike = NDArray[np.float_]
+if TYPE_CHECKING:  # pragma: no cover - typing helper for optional dependency
+    from sktime.transformations.panel.rocket import MiniRocketMultivariate
+    from sktime.utils.data_processing import from_3d_numpy_to_nested as _to_nested
+
+
+logger = logging.getLogger(__name__)
+
+
+ArrayLike = NDArray[np.float64]
+
+
+class DependencyUnavailable(RuntimeError):
+    """Raised when an optional dependency is not available at runtime."""
+
+
+try:  # pragma: no cover - exercised in integration tests when dependency present
+    from sktime.transformations.panel.rocket import (
+        MiniRocketMultivariate as _MiniRocket,
+    )
+    from sktime.utils.data_processing import from_3d_numpy_to_nested as _to_nested
+except Exception as exc:  # pragma: no cover - executed when sktime is missing
+    SKTIME_AVAILABLE = False
+    IMPORT_ERR: Exception | None = exc
+    _MiniRocket = None  # type: ignore[assignment]
+    _to_nested = None  # type: ignore[assignment]
+else:  # pragma: no cover - exercised when dependency is present
+    SKTIME_AVAILABLE = True
+    IMPORT_ERR = None
 
 
 def _ensure_3d_panel(panel: np.ndarray) -> ArrayLike:
@@ -68,25 +98,22 @@ def generate_minirocket_embeddings(
 
     clean_panel = _ensure_3d_panel(panel)
 
-    MiniRocketMultivariate, from_3d_numpy_to_nested = _import_sktime()
+    if not SKTIME_AVAILABLE or _MiniRocket is None or _to_nested is None:
+        logger.warning(
+            "MiniRocket embeddings requested but optional dependency 'sktime' is unavailable: %s",
+            IMPORT_ERR,
+        )
+        raise DependencyUnavailable("sktime/MiniRocket not installed") from IMPORT_ERR
 
-    transformer = MiniRocketMultivariate(
-        num_kernels=num_features, random_state=random_state
-    )
-    nested = from_3d_numpy_to_nested(clean_panel)
+    transformer = _MiniRocket(num_kernels=num_features, random_state=random_state)
+    nested = _to_nested(clean_panel)
     features = transformer.fit_transform(nested)
     feature_array = features.to_numpy(dtype=float)
     return [row.tolist() for row in feature_array]
 
 
-__all__ = ["generate_minirocket_embeddings"]
-def _import_sktime() -> tuple[object, object]:
-    try:
-        from sktime.transformations.panel.rocket import MiniRocketMultivariate
-        from sktime.utils.data_processing import from_3d_numpy_to_nested
-    except ModuleNotFoundError as exc:  # pragma: no cover - dependency missing
-        raise ModuleNotFoundError(
-            "MiniRocket embeddings require the optional dependency 'sktime'. "
-            "Install it with `pip install sktime`."
-        ) from exc
-    return MiniRocketMultivariate, from_3d_numpy_to_nested
+__all__ = [
+    "DependencyUnavailable",
+    "SKTIME_AVAILABLE",
+    "generate_minirocket_embeddings",
+]
