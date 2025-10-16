@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from agents.langgraph_chain import AgentState, build_langgraph_chain
 
 
-def analyze_and_propose(feature_log: Dict[str, Any], backtest_summary: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_and_propose(
+    feature_log: dict[str, Any],
+    backtest_summary: dict[str, Any],
+) -> dict[str, Any]:
     """Invoke the LangGraph chain to generate a new feature proposal."""
 
     chain = build_langgraph_chain()

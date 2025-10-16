@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-quantitative-framework"
+version = "0.1.0"
+description = "Supabase-first LangGraph agents with Prefect orchestration."
+authors = [{ name = "Agentic Quantitative Framework" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langgraph>=0.0.50",
+    "openai>=1.0.0",
+    "pydantic>=2.7.0",
+    "prefect>=2.14.0",
+    "supabase>=2.4.0",
+    "pgvector>=0.2.5",
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "matplotlib>=3.8.0",
+    "scikit-learn>=1.4.0",
+]
+
+[project.optional-dependencies]
+tests = [
+    "pytest>=7.4.0",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["agents", "features", "framework", "flows", "backtest"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+packages = ["agents", "features", "framework", "flows", "backtest"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra"

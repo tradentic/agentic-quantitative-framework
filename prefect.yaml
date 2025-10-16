@@ -1,0 +1,32 @@
+prefect-version: "2.14.0"
+
+deployments:
+  - name: embedding-refresh-dev
+    flow_name: supabase-embedding-refresh
+    entrypoint: flows/embedding_flow.py:supabase_embedding_refresh
+    work_pool:
+      name: local-agent
+    parameters:
+      limit: 5
+    schedule:
+      interval: 600
+  - name: scheduled-backtest-dev
+    flow_name: scheduled-backtest-runner
+    entrypoint: flows/backtest_flow.py:scheduled_backtest_runner
+    work_pool:
+      name: local-agent
+    parameters:
+      limit: 3
+    schedule:
+      interval: 900
+  - name: nightly-prune-dev
+    flow_name: scheduled-vector-prune
+    entrypoint: flows/prune_flow.py:scheduled_vector_prune
+    work_pool:
+      name: local-agent
+    schedule:
+      cron: "0 3 * * *"
+    parameters:
+      max_age_days: 120
+      min_t_stat: 0.25
+      regime_diversity: 2

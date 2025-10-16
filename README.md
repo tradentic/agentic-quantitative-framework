@@ -4,8 +4,9 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
 
 ## Highlights
 
-- **LangGraph agent chain** – `agents/langgraph_chain.py` orchestrates tool calls for feature proposals, backtesting, vector pruning, and embedding refreshes.
-- **Supabase tooling** – `agents/tools.py` wraps Supabase RPCs/tables, and `features/generate_ts2vec_embeddings.py` writes embeddings to the `signal_embeddings` table.
+- **LangGraph agent chain** – `agents/langgraph_chain.py` orchestrates tool calls for feature proposals, backtesting, vector pruning, and embedding refreshes with guardrailed static analysis.
+- **Supabase tooling** – `agents/tools.py` wraps Supabase RPCs/tables, `framework/supabase_client.py` provides typed helpers, and `features/generate_ts2vec_embeddings.py` prepares pgvector rows.
+- **Prefect orchestration** – `flows/` contains Prefect 2.x flows for embedding refreshes, scheduled backtests, and nightly vector pruning defined in `prefect.yaml`.
 - **Use case modularity** – Add strategies under `use_cases/<name>/` with pipeline classes that build agent payloads.
 - **Docusaurus docs** – Documentation lives in `docs/` and renders with the updated sidebar structure.
 
@@ -21,8 +22,7 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
 
 1. Install dependencies via the devcontainer or manually:
    ```bash
-   pnpm install  # if a frontend is present
-   pip install -r requirements.txt  # or poetry install (define as needed)
+   make dev  # creates a .venv and installs project dependencies
    ```
 2. Copy environment variables:
    ```bash
@@ -32,7 +32,12 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
    ```bash
    supabase start
    ```
-4. Validate the agent graph:
+4. Start the Prefect server and register deployments:
+   ```bash
+   prefect server start &
+   prefect deployment apply prefect.yaml
+   ```
+5. Validate the agent graph:
    ```bash
    python -c "from agents import build_langgraph_chain; build_langgraph_chain()"
    ```

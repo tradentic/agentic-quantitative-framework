@@ -1,4 +1,5 @@
 ---
+id: architecture-quant-ai-strategy-design
 title: Quant AI Strategy Design
 sidebar_position: 1
 description: Supabase-first reference architecture for the Agentic Quantitative Framework.
