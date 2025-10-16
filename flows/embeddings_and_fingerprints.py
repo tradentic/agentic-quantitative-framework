@@ -283,10 +283,14 @@ def upsert_fingerprint_rows(
     except MissingSupabaseConfiguration:
         return list(rows)
 
-    payload = [
-        {k: v for k, v in row.items() if k != "table"}
-        for row in rows
-    ]
+    payload: list[dict[str, Any]] = []
+    for row in rows:
+        sanitized = {
+            key: value
+            for key, value in row.items()
+            if key not in {"table", "id"}
+        }
+        payload.append(sanitized)
     response = (
         client.table(table_name)
         .upsert(payload, on_conflict="asset_symbol,window_start,window_end,version")
