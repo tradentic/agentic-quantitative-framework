@@ -9,11 +9,11 @@ description: How Prefect flows, Supabase storage, and LangGraph agents coordinat
 1. **Payload construction** – Use cases assemble a payload describing the asset universe, hyperparameters, and evaluation window.
 2. **Agent invocation** – `run_backtest()` is called via the LangGraph chain or Prefect `scheduled-backtest-runner` flow. The tool
    executes `backtest/engine.py` locally and computes Sharpe, drawdown, and annualized return metrics.
-3. **Artifact persistence** – Summaries are uploaded to Supabase storage (`backtests/<strategy>/<timestamp>/summary.json`) and
-   plots (equity curves) are pushed alongside them. Each run inserts a row into the `backtest_results` table via
-   `framework.supabase_client.insert_backtest_result`.
-4. **Supabase visibility** – Requests originate from the `backtest_requests` table or from real-time triggers. Prefect updates the
-   table when jobs finish so dashboards can reflect the latest status.
+3. **Artifact persistence** – Summaries are uploaded to Supabase storage (`model-artifacts/backtests/<strategy>/<timestamp>/...`).
+   Each run inserts a row into the `backtest_results` table via `framework.supabase_client.insert_backtest_result`, storing
+   `config`, `metrics`, and an `artifacts` JSON payload with storage paths.
+4. **Supabase visibility** – Requests originate from the `backtest_requests` table or realtime triggers. Prefect updates the table
+   when jobs finish so dashboards can reflect the latest status.
 
 ## Designing Backtests
 
@@ -32,5 +32,6 @@ The Prefect deployment `scheduled-backtest-runner` polls `backtest_requests` for
 ## Reading Results
 
 The backtest tool returns a structured dictionary with metric summaries and Supabase storage paths. Agents, notebooks, or Prefect
-flows can follow up by querying `backtest_results` for the `strategy_id` and timestamp or by downloading artifacts from storage to
-re-plot curves.
+flows can follow up by querying `backtest_results` for the stored `config` metadata or by downloading artifacts from storage to
+re-plot curves. The canonical architecture remains documented in
+[architecture/quant_ai_strategy_design.md](architecture/quant_ai_strategy_design.md).
