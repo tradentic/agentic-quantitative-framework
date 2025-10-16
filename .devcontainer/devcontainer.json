@@ -1,5 +1,5 @@
 {
-  "name": "@airnub/agentic-quantitive-framework",
+  "name": "@airnub/agentic-quantitative-framework",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},

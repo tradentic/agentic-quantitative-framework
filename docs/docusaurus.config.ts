@@ -15,7 +15,7 @@ const themeConfig: ThemeConfig = {
       {type: 'doc', docId: 'architecture/quant_ai_strategy_design', position: 'left', label: 'Architecture'},
       {type: 'doc', docId: 'agents', position: 'left', label: 'Agents'},
       {
-        href: 'https://github.com/airnub/agentic-quantitive-framework',
+        href: 'https://github.com/airnub/agentic-quantitative-framework',
         label: 'GitHub',
         position: 'right',
       },
@@ -36,11 +36,11 @@ const themeConfig: ThemeConfig = {
         items: [
           {
             label: 'GitHub Discussions',
-            href: 'https://github.com/airnub/agentic-quantitive-framework/discussions',
+            href: 'https://github.com/airnub/agentic-quantitative-framework/discussions',
           },
           {
             label: 'Issues',
-            href: 'https://github.com/airnub/agentic-quantitive-framework/issues',
+            href: 'https://github.com/airnub/agentic-quantitative-framework/issues',
           },
         ],
       },
@@ -60,7 +60,7 @@ const config: Config = {
   url: 'https://agentic-quantitative-framework.dev',
   baseUrl: '/',
   organizationName: 'airnub',
-  projectName: 'agentic-quantitive-framework',
+  projectName: 'agentic-quantitative-framework',
   onBrokenLinks: 'throw',
   trailingSlash: false,
   markdown: {
@@ -79,7 +79,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: join(__dirname, 'sidebars.ts'),
-          editUrl: 'https://github.com/airnub/agentic-quantitive-framework/tree/main/docs/',
+          editUrl: 'https://github.com/airnub/agentic-quantitative-framework/tree/main/docs/',
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
         },
