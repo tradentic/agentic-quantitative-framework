@@ -109,3 +109,17 @@ make lint       # ruff check + mypy
 
 Refer to `docs/architecture/quant_ai_strategy_design.md` for the end-to-end system blueprint that these local commands
 support.
+
+## 6. Supabase Reset Flow
+
+```bash
+# Start the local stack (if not already running)
+supabase start
+
+# Reset the local DB (recreates container, applies migrations, then runs seed.sql)
+supabase db reset --local
+
+# Optional: push any new migrations later
+supabase db push --local --dry-run
+supabase db push --local
+```
