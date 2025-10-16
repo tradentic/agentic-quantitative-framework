@@ -2,4 +2,5 @@
 
 __all__ = [
     "generate_ts2vec_embeddings",
+    "microstructure",
 ]
