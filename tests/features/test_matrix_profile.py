@@ -13,9 +13,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-pytest.importorskip("stumpy")
-
 from features.matrix_profile import MatrixProfileFeatures, compute_matrix_profile_metrics
+
+
+try:
+    import stumpy  # type: ignore import-not-found
+except ImportError:  # pragma: no cover - exercised when dependency missing
+    STUMPY_AVAILABLE = False
+else:  # pragma: no cover - exercised when dependency present
+    STUMPY_AVAILABLE = True
+
+
+@pytest.fixture(params=["numba", "naive"], ids=lambda engine: f"engine={engine}")
+def matrix_profile_engine(request: pytest.FixtureRequest) -> str:
+    engine = request.param
+    if engine == "numba" and not STUMPY_AVAILABLE:
+        pytest.skip("stumpy is not installed")
+    return engine
 
 
 def _znorm(values: np.ndarray) -> np.ndarray:
@@ -89,13 +103,13 @@ def _naive_motif_counts(series: Iterable[float], subseq_length: int, max_motifs:
     return counts
 
 
-def test_matrix_profile_metrics_match_naive() -> None:
+def test_matrix_profile_metrics_match_naive(matrix_profile_engine: str) -> None:
     rng = np.random.default_rng(23)
     series = rng.normal(loc=0.0, scale=1.0, size=64)
     subseq_length = 8
     max_motifs = 3
 
-    metrics = compute_matrix_profile_metrics(series, subseq_length, max_motifs)
+    metrics = compute_matrix_profile_metrics(series, subseq_length, max_motifs, engine=matrix_profile_engine)
     naive_profile = _naive_matrix_profile(series, subseq_length)
 
     assert isinstance(metrics, MatrixProfileFeatures)
@@ -116,15 +130,45 @@ def test_matrix_profile_metrics_match_naive() -> None:
     assert metrics.motif_counts == naive_counts
 
 
-def test_matrix_profile_motifs_detect_repeated_patterns() -> None:
+def test_matrix_profile_motifs_detect_repeated_patterns(matrix_profile_engine: str) -> None:
     series = np.array([1, 2, 1, 2, 1, 2, 3, 4, 3, 4], dtype=float)
     subseq_length = 2
 
-    metrics = compute_matrix_profile_metrics(series, subseq_length, max_motifs=2)
+    metrics = compute_matrix_profile_metrics(
+        series,
+        subseq_length,
+        max_motifs=2,
+        engine=matrix_profile_engine,
+    )
 
     assert metrics.primary_motif_distance == pytest.approx(0.0, abs=1e-8)
     # first motif captures the repeated (1, 2) pattern, second motif captures (3, 4)
     assert metrics.motif_counts == [3, 2]
+
+
+def test_matrix_profile_engine_env_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    rng = np.random.default_rng(7)
+    series = rng.normal(loc=0.0, scale=1.0, size=32)
+    subseq_length = 4
+    max_motifs = 2
+
+    monkeypatch.setenv("MATRIX_PROFILE_ENGINE", "naive")
+
+    metrics = compute_matrix_profile_metrics(series, subseq_length, max_motifs)
+    naive_profile = _naive_matrix_profile(series, subseq_length)
+
+    np.testing.assert_allclose(
+        metrics.primary_motif_distance,
+        np.nanmin(naive_profile),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        metrics.discord_distance,
+        np.nanmax(naive_profile),
+        rtol=1e-5,
+        atol=1e-5,
+    )
 
 
 def test_matrix_profile_parameter_validation() -> None:

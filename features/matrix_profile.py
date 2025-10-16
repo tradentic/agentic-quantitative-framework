@@ -1,11 +1,29 @@
-"""Matrix Profile utilities for shape-based anomaly detection."""
+"""Matrix Profile utilities for shape-based anomaly detection.
+
+The behaviour of :func:`compute_matrix_profile_metrics` can be tuned via the
+``MATRIX_PROFILE_ENGINE`` environment variable. Supported values are
+
+``"numba"`` (default)
+    Uses :mod:`stumpy`'s accelerated implementation when available.
+
+``"naive"``
+    Forces the pure-Python fallback that avoids :mod:`stumpy` and NumPy's Numba
+    extensions. This mode is slower but safer on platforms where compiling
+    Numba-accelerated code is problematic.
+"""
 
 from __future__ import annotations
 
+import logging
+import os
+import warnings
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -32,6 +50,8 @@ def compute_matrix_profile_metrics(
     series: Sequence[float] | np.ndarray,
     subseq_length: int,
     max_motifs: int = 3,
+    *,
+    engine: str | None = None,
 ) -> MatrixProfileFeatures:
     """Compute discord and motif metrics for a univariate time series.
 
@@ -43,6 +63,11 @@ def compute_matrix_profile_metrics(
         Sliding window length (``m``) used for the Matrix Profile subsequences.
     max_motifs:
         Maximum number of motif groups to report.
+    engine:
+        Optional engine selector. Accepts ``"numba"`` (uses :mod:`stumpy` when
+        available) or ``"naive"`` for the pure Python fallback. When omitted the
+        function consults the ``MATRIX_PROFILE_ENGINE`` environment variable and
+        defaults to ``"numba"`` if unset.
 
     Returns
     -------
@@ -53,26 +78,43 @@ def compute_matrix_profile_metrics(
     ------
     ValueError
         If the series length or parameters are invalid.
-    ImportError
-        If ``stumpy`` is not installed.
     """
 
     _validate_parameters(series, subseq_length, max_motifs)
     values = _as_float_array(series)
 
+    requested_engine = _resolve_engine(engine)
     small_window = subseq_length < 3
+
     if small_window:
+        actual_engine = "naive"
+        logger.info(
+            "Computing matrix profile with '%s' engine (forced for subseq_length < 3).",
+            actual_engine,
+        )
+        matrix_profile = _naive_matrix_profile(values, subseq_length)
+    elif requested_engine == "naive":
+        actual_engine = "naive"
+        logger.info("Computing matrix profile with '%s' engine.", actual_engine)
         matrix_profile = _naive_matrix_profile(values, subseq_length)
     else:
+        actual_engine = "numba"
         try:
             import stumpy  # type: ignore import-not-found
-        except ImportError as exc:  # pragma: no cover - exercised when dependency missing
-            raise ImportError(
-                "stumpy is required to compute matrix profile features. Install it via 'pip install stumpy'."
-            ) from exc
-
-        profile = stumpy.stump(values, subseq_length)
-        matrix_profile = np.asarray(profile[:, 0], dtype=float)
+        except ImportError:  # pragma: no cover - exercised when dependency missing
+            message = (
+                "stumpy is unavailable; falling back to the 'naive' matrix profile engine. "
+                "Install 'stumpy' for accelerated execution."
+            )
+            logger.warning(message)
+            warnings.warn(message, UserWarning, stacklevel=2)
+            actual_engine = "naive"
+            logger.info("Computing matrix profile with '%s' engine.", actual_engine)
+            matrix_profile = _naive_matrix_profile(values, subseq_length)
+        else:
+            logger.info("Computing matrix profile with '%s' engine.", actual_engine)
+            profile = stumpy.stump(values, subseq_length)
+            matrix_profile = np.asarray(profile[:, 0], dtype=float)
 
     discord_distance = _finite_nan_safe_max(matrix_profile)
     primary_motif_distance = _finite_nan_safe_min(matrix_profile)
@@ -87,6 +129,17 @@ def compute_matrix_profile_metrics(
         float(primary_motif_distance) if np.isfinite(primary_motif_distance) else float("nan"),
         motif_counts=motif_counts,
     )
+
+
+def _resolve_engine(engine: str | None) -> str:
+    env_engine = os.getenv("MATRIX_PROFILE_ENGINE")
+    candidate = (engine or env_engine or "numba").strip().lower()
+    if candidate not in {"naive", "numba"}:
+        logger.warning(
+            "Unknown MATRIX_PROFILE_ENGINE value '%s'; defaulting to 'numba'.", candidate
+        )
+        return "numba"
+    return candidate
 
 
 def _validate_parameters(series: Sequence[float] | np.ndarray, subseq_length: int, max_motifs: int) -> None:
