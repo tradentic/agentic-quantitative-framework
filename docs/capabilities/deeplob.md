@@ -11,15 +11,16 @@
   - Optional path to pretrained DeepLOB weights (``.pt``/``.pth``) for domain-specific fine-tuning.
   - Optional device hint (``"cuda"`` or ``"cpu"``) to steer inference hardware.
 - **Outputs:**
-  - Float32 tensor of shape ``(batch, hidden_size)`` representing the penultimate LSTM activations.
-  - Embeddings are detached from gradients and ready for storage or similarity search.
+  - Float32 tensor of shape ``(batch, 128)`` representing the projected penultimate LSTM activations.
+  - Embeddings are detached from gradients and ready for storage or similarity search and align with pgvector ``vector(128)`` schemas.
 
 ## Configuration
 - ``DeepLOBConfig`` fields control architecture depth and widths:
   - ``in_channels``: number of feature channels per LOB snapshot (default 1).
   - ``conv_channels``: tuple defining successive 2D convolution widths.
   - ``inception_channels``: channel count of the inception aggregator.
-  - ``lstm_hidden_size``: output width (and embedding dimension) of the recurrent head.
+  - ``lstm_hidden_size``: hidden width of the recurrent head before projection.
+  - ``embedding_dim``: final embedding dimensionality (default ``128``).
   - ``dropout``: applied before the LSTM to regularise activations.
 - ``load_deeplob_model`` auto-selects GPU if available; override via ``device="cpu"`` for deterministic CPU execution.
 
@@ -29,7 +30,13 @@ python - <<'PY'
 import torch
 from features.deeplob_embeddings import DeepLOBConfig, deeplob_embeddings, load_deeplob_model
 
-config = DeepLOBConfig(in_channels=1, conv_channels=(16, 32, 64), inception_channels=64, lstm_hidden_size=64)
+config = DeepLOBConfig(
+    in_channels=1,
+    conv_channels=(16, 32, 64),
+    inception_channels=64,
+    lstm_hidden_size=64,
+    embedding_dim=128,
+)
 model = load_deeplob_model(config=config)
 book = torch.randn(128, config.in_channels, 40, 32)
 vectors = deeplob_embeddings(book, model=model, batch_size=32)
@@ -43,6 +50,6 @@ PY
 - ``ModuleNotFoundError`` is avoided—PyTorch is a declared dependency and the loader gracefully falls back to CPU when CUDA is unavailable.
 
 ## Validation Checks
-- Unit tests ensure embeddings returned for random tensors match the configured hidden dimension and remain finite.
+- Unit tests ensure embeddings returned for random tensors match the configured embedding dimension and remain finite.
 - Configuration dataclass validates convolutional channel definitions and dropout ranges.
 - Batch inference path exercises CPU fallback ensuring deterministic penultimate vectors without GPU access.
