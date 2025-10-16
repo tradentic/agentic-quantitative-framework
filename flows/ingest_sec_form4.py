@@ -1,0 +1,177 @@
+"""Prefect flow to ingest SEC Form 4 filings into Supabase."""
+
+from __future__ import annotations
+
+import argparse
+import os
+from datetime import date, datetime, timedelta
+from typing import Iterable
+import xml.etree.ElementTree as ET
+
+from prefect import flow, get_run_logger
+
+from framework.sec_client import (
+    Form4IndexRow,
+    ParsedForm4,
+    accession_to_primary_xml_url,
+    fetch_edgar_url,
+    iter_form4_index,
+    parse_form4_xml,
+)
+from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+
+BATCH_SIZE = max(int(os.getenv("SEC_FORM4_BATCH_SIZE", "50")), 1)
+
+
+def _daterange(start: date, end: date) -> Iterable[date]:
+    current = start
+    while current <= end:
+        yield current
+        current += timedelta(days=1)
+
+
+def _build_filing_record(row: Form4IndexRow, parsed: ParsedForm4, xml_url: str) -> dict[str, object]:
+    return {
+        "accession_number": parsed.accession or row.accession_number,
+        "cik": row.cik,
+        "form_type": row.form_type,
+        "company_name": row.company_name,
+        "filed_at": datetime.combine(row.date_filed, datetime.min.time()).isoformat(),
+        "symbol": parsed.symbol,
+        "reporter": parsed.reporter,
+        "xml_url": xml_url,
+    }
+
+
+def _build_transaction_records(parsed: ParsedForm4) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for txn in parsed.transactions:
+        payload.append(
+            {
+                "accession_number": parsed.accession,
+                "transaction_date": txn.date.isoformat(),
+                "transaction_code": txn.code,
+                "shares": txn.shares,
+                "price": txn.price,
+                "symbol": parsed.symbol,
+                "reporter": parsed.reporter,
+            }
+        )
+    return payload
+
+
+def _chunked(iterable: list[Form4IndexRow], size: int) -> Iterable[list[Form4IndexRow]]:
+    for idx in range(0, len(iterable), size):
+        yield iterable[idx : idx + size]
+
+
+def _persist_records(table: str, records: list[dict[str, object]], *, conflict: str | None = None) -> int:
+    if not records:
+        return 0
+    client = get_supabase_client()
+    if conflict:
+        client.table(table).upsert(records, on_conflict=conflict).execute()
+    else:
+        client.table(table).upsert(records).execute()
+    return len(records)
+
+
+@flow(name="ingest-sec-form4")
+def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]:
+    """Ingest Form 4 filings between two dates (inclusive)."""
+
+    logger = get_run_logger()
+    if date_to is None:
+        date_to = date_from
+    if date_to < date_from:
+        raise ValueError("date_to must be greater than or equal to date_from")
+
+    logger.info("Starting Form 4 ingest from %s to %s", date_from, date_to)
+    total_filings = 0
+    total_transactions = 0
+    persistence_available = True
+    try:
+        get_supabase_client()
+    except MissingSupabaseConfiguration:
+        logger.warning("Supabase credentials not configured; running in dry-run mode")
+        persistence_available = False
+
+    for target_date in _daterange(date_from, date_to):
+        rows = list(iter_form4_index(target_date))
+        logger.info("%s -> %d Form 4 candidates", target_date, len(rows))
+        for batch in _chunked(rows, BATCH_SIZE):
+            filings_payload: list[dict[str, object]] = []
+            transactions_payload: list[dict[str, object]] = []
+            for row in batch:
+                xml_url = accession_to_primary_xml_url(row.accession_path)
+                try:
+                    xml_bytes = fetch_edgar_url(xml_url)
+                except FileNotFoundError:
+                    logger.warning("Missing primary XML for accession %s", row.accession_number)
+                    continue
+                try:
+                    parsed = parse_form4_xml(xml_bytes)
+                except ET.ParseError as exc:
+                    logger.warning(
+                        "Failed to parse Form 4 XML for accession %s: %s",
+                        row.accession_number,
+                        exc,
+                    )
+                    continue
+                if not parsed.accession:
+                    parsed = ParsedForm4(
+                        symbol=parsed.symbol,
+                        transactions=parsed.transactions,
+                        reporter=parsed.reporter,
+                        cik=parsed.cik or row.cik,
+                        accession=row.accession_number,
+                    )
+                filings_payload.append(_build_filing_record(row, parsed, xml_url))
+                transactions_payload.extend(_build_transaction_records(parsed))
+            batch_filings = len(filings_payload)
+            batch_transactions = len(transactions_payload)
+            if persistence_available:
+                total_filings += _persist_records(
+                    "edgar_filings", filings_payload, conflict="accession_number"
+                )
+                total_transactions += _persist_records(
+                    "insider_transactions",
+                    transactions_payload,
+                    conflict="accession_number,transaction_date,transaction_code",
+                )
+            else:
+                total_filings += batch_filings
+                total_transactions += batch_transactions
+        logger.info(
+            "%s -> %d filings persisted, %d transactions", target_date, total_filings, total_transactions
+        )
+    return {"filings": total_filings, "transactions": total_transactions}
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Ingest SEC Form 4 filings into Supabase")
+    parser.add_argument("--date", type=str, help="Single date (YYYY-MM-DD) to ingest")
+    parser.add_argument("--date-from", type=str, help="Start date inclusive (YYYY-MM-DD)")
+    parser.add_argument("--date-to", type=str, help="End date inclusive (YYYY-MM-DD)")
+    return parser.parse_args()
+
+
+def _coerce_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    return date.fromisoformat(value)
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+    if args.date:
+        start = end = _coerce_date(args.date)
+    else:
+        start = _coerce_date(args.date_from)
+        end = _coerce_date(args.date_to) if args.date_to else start
+    if start is None:
+        raise SystemExit("--date or --date-from is required")
+    if end is None:
+        end = start
+    result = ingest_form4(date_from=start, date_to=end)
+    print(result)
