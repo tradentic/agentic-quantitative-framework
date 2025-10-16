@@ -5,7 +5,7 @@ A portable Codespaces/devcontainer that readies a **Supabase-first** environment
 ## What this sets up
 
 * **Base image**: Ubuntu 24.04 with Docker‑in‑Docker
-* **Tooling**: Node **24** (Corepack/PNPM enabled), Supabase CLI, optional AI CLIs (see `scripts/`)
+* **Tooling**: Node **24** (Corepack/PNPM enabled), Supabase CLI, Prefect CLI, optional AI CLIs (see `scripts/`)
 * **Ports**: 4200 (Prefect UI/API), 3920/4002/4390 (Prefect background services), 51321/51322/51323/51324/51327 (Supabase stack)
 
 ## Lifecycle hooks
@@ -18,6 +18,7 @@ A portable Codespaces/devcontainer that readies a **Supabase-first** environment
   * Enables corepack/pnpm
   * Installs deps **only if** `package.json` exists
   * Installs **Supabase CLI**
+  * Installs **Prefect CLI** via `pipx`
   * Installs **OpenAI Codex CLI** via **pnpm global** (no npm/brew)
   * *(Optional, if enabled in the script)* Installs **Anthropic Claude Code CLI** via **pnpm global**
 

@@ -49,6 +49,9 @@ fi
 log "Installing Supabase CLI..."
 "$HERE/install-supabase-cli.sh"
 
+log "Installing Prefect CLI..."
+"$HERE/install-prefect-cli.sh"
+
 log "Installing OpenAI Codex CLI..."
 "$HERE/install-codex-cli.sh"
 
