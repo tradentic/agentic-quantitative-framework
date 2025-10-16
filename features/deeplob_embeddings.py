@@ -5,10 +5,24 @@ producing penultimate-layer embeddings for limit order book (LOB) snapshots.
 It provides an ergonomic loader that can hydrate weights on either CPU or GPU
 and a batch inference helper that returns a 128-dimensional embedding per
 input window.
+
+Two environment variables control runtime behaviour when weights are not
+explicitly provided:
+
+``DEEPLOB_WEIGHTS_PATH``
+    Path to a serialized DeepLOB state dict. When supplied, the loader verifies
+    the file exists before attempting to hydrate it.
+
+``DEEPLOB_DEVICE``
+    Torch device string (for example ``"cpu"`` or ``"cuda:0"``). If unset, the
+    runtime defaults to CPU execution to maximise compatibility with
+    lightweight environments.
 """
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, NamedTuple, Sequence, TYPE_CHECKING
@@ -19,6 +33,13 @@ if TYPE_CHECKING:  # pragma: no cover - typing aids
 else:  # pragma: no cover - executed when torch is unavailable
     Tensor = Any
     Device = Any
+
+
+logger = logging.getLogger(__name__)
+
+
+class DependencyUnavailable(RuntimeError):
+    """Raised when an optional dependency or artifact is unavailable."""
 
 
 class _TorchArtifacts(NamedTuple):
@@ -199,11 +220,28 @@ class DeepLOBConfig:
             raise ValueError("`dropout` must be in [0, 1).")
 
 
-def _resolve_device(device_hint: Device | str | None) -> Any:
-    torch, *_ = _load_torch_artifacts()
+def _resolve_device(torch_mod: Any, device_hint: Device | str | None) -> Any:
+    """Resolve the target device from an explicit hint or environment value."""
+
+    env_hint = os.getenv("DEEPLOB_DEVICE")
     if device_hint is not None:
-        return torch.device(device_hint)
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return torch_mod.device(device_hint)
+    if env_hint:
+        return torch_mod.device(env_hint)
+    return torch_mod.device("cpu")
+
+
+def _resolve_weights_path(path_hint: str | Path | None) -> Path | None:
+    """Resolve and validate the DeepLOB weights path if provided."""
+
+    candidate = path_hint or os.getenv("DEEPLOB_WEIGHTS_PATH")
+    if candidate is None:
+        return None
+
+    weights_path = Path(candidate).expanduser()
+    if not weights_path.exists():
+        raise FileNotFoundError(f"DeepLOB weights not found at: {weights_path}")
+    return weights_path
 
 
 def load_deeplob_model(
@@ -216,11 +254,12 @@ def load_deeplob_model(
 
     torch, nn, _, _, deep_lob_cls = _load_torch_artifacts()
     cfg = config or DeepLOBConfig()
-    target_device = _resolve_device(device)
+    target_device = _resolve_device(torch, device)
     model = deep_lob_cls(cfg)
     model.to(target_device)
-    if state_dict_path is not None:
-        state_dict = torch.load(Path(state_dict_path), map_location=target_device)
+    weights_path = _resolve_weights_path(state_dict_path)
+    if weights_path is not None:
+        state_dict = torch.load(weights_path, map_location=target_device)
         model.load_state_dict(state_dict)
     model.eval()
     return model
@@ -235,7 +274,14 @@ def deeplob_embeddings(
 ) -> Any:
     """Generate 128-dimensional DeepLOB embeddings for the provided book tensor."""
 
-    torch, _, data_loader, tensor_dataset, _ = _load_torch_artifacts()
+    try:
+        torch, _, data_loader, tensor_dataset, _ = _load_torch_artifacts()
+    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in tests
+        logger.warning(
+            "DeepLOB embeddings requested but optional dependency 'torch' is unavailable: %s",
+            exc,
+        )
+        raise DependencyUnavailable("torch/DeepLOB not installed") from exc
     if batch_size <= 0:
         raise ValueError("`batch_size` must be positive.")
 
@@ -244,9 +290,16 @@ def deeplob_embeddings(
     if book_tensor.ndim != 4:
         raise ValueError("`book` must have shape (batch, channels, depth, width).")
 
-    inferred_device = _resolve_device(device)
+    inferred_device = _resolve_device(torch, device)
     if model is None:
-        model = load_deeplob_model(device=inferred_device)
+        try:
+            model = load_deeplob_model(device=inferred_device)
+        except FileNotFoundError as exc:  # pragma: no cover - exercised in tests
+            logger.warning(
+                "DeepLOB embeddings requested but weights file could not be located: %s",
+                exc,
+            )
+            raise DependencyUnavailable("DeepLOB weights not found") from exc
     else:
         model = model.to(inferred_device)
 
@@ -270,6 +323,7 @@ def deeplob_embeddings(
 __all__ = [
     "DeepLOB",
     "DeepLOBConfig",
+    "DependencyUnavailable",
     "deeplob_embeddings",
     "load_deeplob_model",
 ]
