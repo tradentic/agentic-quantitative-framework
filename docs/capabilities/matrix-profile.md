@@ -17,6 +17,7 @@
 ## Configuration
 - `subseq_length` (int): window size used when computing the Matrix Profile; must be greater than one and smaller than the series length.
 - `max_motifs` (int): number of motif groups to return; defaults to three.
+- `MATRIX_PROFILE_ENGINE` (env): set to `naive` to force the pure-Python implementation when compiling `stumpy`/Numba kernels is unsafe for the target environment. Defaults to `numba` which attempts to use `stumpy`.
 - `stumpy` version >= 1.11 recommended for performant Matrix Profile computation.
 
 ## CLI Example
@@ -32,7 +33,7 @@ PY
 ```
 
 ## Failure Modes
-- ``ImportError`` when `stumpy` is not installed in the runtime environment.
+- Automatic fallback to the naive engine when `stumpy` import fails. A warning is logged/emitted so operators are aware that accelerated execution is unavailable.
 - ``ValueError`` if the series is shorter than ``subseq_length + 1`` or if parameters are out of bounds.
 - Degenerate (flat) subsequences yield zero variance; the implementation falls back to zero vectors to keep motif distances finite.
 
