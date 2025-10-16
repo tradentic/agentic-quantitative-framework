@@ -2,47 +2,63 @@
 
 ## Role of Agents in This Project
 
-This project uses GPT-5-level agents to serve as strategic planners, feature engineers, and continuous learners in a closed feedback loop. The system integrates:
+This project uses GPT-5-level agents to orchestrate autonomous learning and signal discovery across financial datasets. Agents operate in a closed-loop feedback architecture, leveraging Supabase and LangGraph to coordinate long-lived reasoning, memory, and retraining. Core components include:
 
-- Self-supervised feature generation (TS2Vec, DeepLOB, etc.)
-- Symbolic regression (PySR)
-- Regime-aware labeling and validation
-- Similarity search using vector databases (FAISS, Pinecone)
-- Continual learning based on performance feedback
+* Self-supervised feature generation (TS2Vec, DeepLOB, etc.)
+* Symbolic regression (PySR) and transformation analysis
+* Regime-aware labeling and window segmentation
+* Supabase pgvector for similarity search and historical context recall
+* Supabase triggers for feedback-aware retraining
+* LangGraph as the runtime for memory, tool calls, and planning
 
 ## Agent Responsibilities
 
 ### 1. Feature Planning Agent
-- Analyze signal decay, drift, and backtest outcomes
-- Propose new features or transforms (e.g., bid-ask imbalance + dark pool share)
-- Write feature generator scripts to `features/`
+
+* Analyze decay and drift of features in backtest logs
+* Propose symbolic, topological, or embedding-based feature variants
+* Write scripts to `features/` and register metadata in Supabase
 
 ### 2. Strategy Evaluation Agent
-- Read backtest logs and Sharpe metrics
-- Suggest retraining schedules or model refresh
-- Write configs to `config/model_config.yaml`
+
+* Consume model diagnostics, Sharpe stats, and live signal accuracy
+* Schedule retraining, checkpoint deprecated signals
+* Maintain configuration files under `config/`
 
 ### 3. Vector Intelligence Agent
-- Monitor embedding quality and drift
-- Re-index vector DB if model or data changes
-- Trigger similarity search and cluster analysis in `vector_db/`
+
+* Monitor drift in Supabase pgvector embeddings
+* Trigger similarity re-indexing when retraining or regime change occurs
+* Maintain signal cluster snapshots in `vector_db/`
 
 ## Agent Entry Points
 
-- Agents should reference `Quant Ai Strategy Design.md` for the full system vision
-- Agents may operate via LangGraph, AutoGen, or compatible tool interfaces
-- All agent-generated artifacts should include trace metadata and be saved in versioned locations
+* Agents must reference: `docs/architecture/quant_ai_strategy_design.md`
+* Agents run inside `agents/langgraph_chain.py` (or modular subchains)
+* All agent-generated outputs must:
+
+  * Be stored with metadata (creator, timestamp, backtrace)
+  * Avoid duplicating existing feature keys or models unless explicitly versioned
+
+## Supabase Integration Notes
+
+* Vector DB: use `signal_embeddings` table in pgvector (with cosine index)
+* Triggering: use Supabase RPC or realtime events to detect new embeddings and run agents
+* Storage: Supabase buckets can hold serialized features or model artifacts
 
 ## Use Case Plugability
 
-This framework supports arbitrary use cases by defining:
-- A new anchor event (e.g. earnings, filings, sentiment spikes)
-- A custom labeling regime
-- A tailored set of features or data sources
+This framework is **modular and use-case agnostic**. To plug in a new use case:
 
-Use cases should be placed under `use_cases/<use_case_name>/` with a manifest or setup file.
+* Define the anchor event (e.g. 13F filing, sentiment event)
+* Label windows pre- or post-event using `labeling.py`
+* Add embedding or feature extraction logic in `features/`
+* Store labeled vectors to Supabase using `vector_db/indexer.py`
 
-## Vision + Architecture Docs
+Each use case should live under: `use_cases/<use_case_name>/`
 
-- System vision: `Quant Ai Strategy Design.md`
-- Example instantiation: `use_cases/insider_trading/Agentic Quant Loop.md`
+## Vision + Reference Docs
+
+* Architecture: `docs/architecture/quant_ai_strategy_design.md`
+* Insider trading prototype: `use_cases/insider_trading/Agentic Quant Loop.md`
+* Dev setup & Supabase CLI: `LOCAL_DEV_SETUP.md`

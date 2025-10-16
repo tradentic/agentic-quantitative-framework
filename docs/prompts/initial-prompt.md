@@ -1,81 +1,61 @@
-# Agent Task: Refactor Repository into Agentic Quantitative Framework Architecture
+# Agent Task: Refactor Repository to Match the Agentic Quantitative Framework
 
 ## GOAL
-You are acting as a senior infrastructure and AI systems engineer. Refactor this repo to align tightly with the architecture defined in:
+You are an autonomous coding agent responsible for aligning this repo to a GPT-driven signal discovery framework. The architecture is defined here:
 
-📄 `docs/architecture/quant_ai_strategy_design.md`
+📄 `docs/architecture/quant_ai_strategy_design.md`  
+📄 `AGENTS.md` (updated agent roles and responsibilities)
 
-## CONTEXT
-This repo includes:
-- A LangGraph-based agentic loop for self-improving signal detection
-- Supabase integration for vector DB, local database, and realtime triggers
-- Additional inherited components (Docusaurus, .devcontainer/, .github workflows)
+## KEY CONSTRAINTS
 
-Your job is to normalize the repo structure, update naming, and ensure tight compliance with the Quant AI architecture.
+✅ Use Supabase as the default stack  
+✅ Do not rename or delete any `.github/` or `.devcontainer/` files  
+✅ Do not overwrite `supabase/config.toml` — it has been manually configured  
+✅ All Markdown docs must load cleanly in Docusaurus (valid frontmatter, no broken paths)
+
+---
 
 ## OBJECTIVES
 
-### ✅ 1. ARCHITECTURE ALIGNMENT
-- Ensure agentic workflow uses LangGraph in `agents/langgraph_chain.py`
-- Clean up any incompatible or legacy files
-- Relocate all use-case-specific logic to `use_cases/<use_case_name>/`
+### 1. ARCHITECTURE COMPLIANCE
+- Ensure the LangGraph agent chain is implemented in `agents/langgraph_chain.py`
+- Supported tool functions: `propose_new_feature()`, `run_backtest()`, `prune_vectors()`, `refresh_vector_store()`
+- Organize strategy-specific logic under `use_cases/<use_case_name>/`
 
-### 💾 2. SUPABASE-FIRST POLICY
-Where applicable, always **prefer Supabase-native solutions over external dependencies**, including:
-- Vector DB → use Supabase pgvector (not Pinecone/Faiss unless fallback is needed)
-- Storage → use Supabase buckets for feature exports or model artifacts
-- Realtime → use Supabase triggers for auto-refresh, retrain, or embed
+### 2. SUPABASE-FIRST IMPLEMENTATION
+- Use Supabase pgvector (`signal_embeddings` table) as the primary vector store
+- Use Supabase buckets for storage (model artifacts, features)
+- Use Supabase triggers or RPC to automate embedding workflows
+- Do not install FAISS, Pinecone, or redundant vector DBs unless required for comparison
 
-Do not install redundant tooling if Supabase provides the same feature set.
+### 3. DOCUSAURUS DOC MANAGEMENT
+- Validate all docs in `docs/` render correctly (especially under `/docs/architecture/`)
+- Architecture reference must remain at: `docs/architecture/quant_ai_strategy_design.md`
+- Add or fix these if missing:
+  - `docs/agents.md`
+  - `docs/backtesting.md`
+  - `docs/deployment.md`
 
-### 📘 3. DOCUSAURUS + NAMING CLEANUP
-- Update docs site config (title, nav bar) to reflect this as the “Agentic Quantitative Framework”
-- Remove or rename any doc pages or folders that refer to old project names
-- Ensure core architecture doc remains at: `docs/architecture/quant_ai_strategy_design.md`
-- Add placeholder pages if missing:
-  - `/docs/agents.md`
-  - `/docs/backtesting.md`
-  - `/docs/deployment.md`
+### 4. ADD ADRs FOR ARCHITECTURE CHOICES
+Add these ADRs in: `docs/architecture/adr/`
 
-### 🐳 4. DEVCONTAINER SUPPORT
-Ensure `.devcontainer/devcontainer.json`:
-- Installs Python 3.11+
-- Installs `supabase` CLI
-- Installs Node.js 18+ for Docusaurus
-- Installs any Supabase extensions (pgvector, realtime triggers)
-- Opens ports 54321, 54322, 3000
+#### `0001-use-supabase-for-local-stack.md`
+> Supabase is chosen as the local stack due to its unified Postgres, vector DB, storage, and realtime capabilities — ideal for agent-driven AI research and reproducible dev environments.
 
-### 🧪 5. WORKFLOWS
-- Rename GitHub workflows clearly:
-  - `ci.yml` → test, lint, typecheck
-  - `docs.yml` → Docusaurus build/test
-- Confirm these reference updated repo name and structure
+#### `0002-use-supabase-as-vector-db.md`
+> Supabase pgvector replaces external vector DBs like Pinecone or FAISS. It supports similarity search and integrates seamlessly with Supabase triggers, buckets, and observability.
+
+### 5. CLEANUP AND CONSISTENCY
+- Update `.env.example` to reflect Supabase and dev container setup
+- Update `README.md` and docs nav to reflect current repo purpose
+- Refactor CI/CD workflows in `.github/` if needed — but don’t delete
+- Ensure `.devcontainer/` installs: Python 3.11, Supabase CLI, Node.js 18, Poetry or pip
 
 ---
 
-## ✅ ARCHITECTURE DECISION RECORDS (ADR)
+## FINAL DELIVERABLE
 
-For all key infrastructure decisions, write ADR files into:
-
-📁 `docs/architecture/adr/`
-
-Start with these two:
-
-### `0001-use-supabase-for-local-stack.md`
-> We choose Supabase for the local development stack due to its integrated Postgres (with pgvector), S3-compatible storage, and built-in Realtime features. It is Dockerized, developer-friendly, and serves as a unified backend for this AI agentic system.
-
-### `0002-use-supabase-as-vector-db.md`
-> Instead of Pinecone or Faiss, we use Supabase with `pgvector` for embedding storage. It supports similarity search, native SQL, and unifies with the rest of the Supabase environment, improving maintainability and developer experience.
-
----
-
-## CONSTRAINTS
-- Do not break existing Docusaurus or Supabase configurations
-- Do not introduce additional cloud dependencies unless absolutely necessary
-- Favor Pythonic, reproducible workflows (e.g., minimal bash scripts, clear Makefile if used)
-
-## FINAL OUTPUT
-A refactored, Supabase-native, LangGraph-ready repo structure that:
-- Implements the quant_ai_strategy_design.md architecture
-- Follows modern AI infra standards
-- Is fully documented with ADRs and developer guidance
+A fully cleaned, consistent, LangGraph-native repo that:
+- Uses Supabase as its backend and vector system
+- Has valid documentation and working dev setup
+- Enables autonomous agents to reason, learn, and self-improve
