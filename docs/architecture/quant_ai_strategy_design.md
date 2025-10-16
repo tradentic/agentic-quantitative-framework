@@ -1,94 +1,62 @@
-# Quant AI Strategy Design
+---
+title: Quant AI Strategy Design
+sidebar_position: 1
+description: Supabase-first reference architecture for the Agentic Quantitative Framework.
+---
 
 ## Overview
-This project defines a modular, extensible architecture for a closed-loop financial signal discovery platform that integrates:
-- Self-supervised and symbolic feature learning
-- GPT-5 agentic reasoning for planning and retraining
-- Risk-aware backtesting and strategy evaluation
-- Vector-based signal memory and similarity search
 
-It is designed to support any time-series-driven use case, including but not limited to:
-- Insider trading pattern detection
-- Systematic anomaly detection
-- Market regime classification
-- Macro event signal generation
-- Execution alpha optimization
+The Agentic Quantitative Framework orchestrates GPT-native research agents, Supabase services, and LangGraph workflows to discover and maintain predictive financial signals. The design emphasizes:
 
-## Technical Architecture Stack
+- **Supabase-unified storage** for relational data, pgvector embeddings, file artifacts, and realtime triggers.
+- **LangGraph state machines** that coordinate long-running GPT interactions with deterministic tool execution.
+- **Use case modularity**, allowing each strategy under `use_cases/<name>/` to define its own labeling, features, and evaluation loops while sharing the same infrastructure.
 
-### 🧱 Infrastructure Layer
+## Layered Architecture
+
+### 1. Infrastructure
+
 | Component | Technology |
-|----------|------------|
-| Compute orchestration | Docker + Kubernetes (or local dev with `task` / `Makefile`) |
-| Workflow pipelines | Airflow / Prefect / Dagster |
-| Storage | PostgreSQL + `pgvector` + Supabase + S3 / Parquet |
-| Vector DB | FAISS, Pinecone, Supabase (pgvector), Milvus |
-| Logging & tracking | Weights & Biases, MLflow, Supabase events or OpenTelemetry |
+| --- | --- |
+| Local stack | Supabase CLI (Postgres + pgvector + Storage + Realtime) |
+| Workflow execution | LangGraph inside Python workers or serverless functions |
+| Artifact storage | Supabase buckets (`model-artifacts`, `feature-snapshots`) |
+| Observability | Supabase logs, pg_stat statements, OpenTelemetry exporters |
 
-### 🧩 Modular Subsystems
+### 2. Data & Feature Fabric
 
-#### 1. **Data Ingestion + Preprocessing**
-- Source data: price/volume, LOB, SEC/EDGAR, dark pool (ATS/TRF), options, news
-- Tools: `pandas`, `pydantic`, `polars`, `lxml`, `sec-edgar-downloader`
-- Output: Time-indexed Parquet datasets (per asset, time window)
+1. **Ingestion & labeling** – Python jobs land raw market data, regulatory events, or fundamentals in Supabase tables. Use cases attach labels using RPC helpers.
+2. **Feature generation** – Feature scripts (for example `features/generate_ts2vec_embeddings.py`) produce embeddings and persist them to the `signal_embeddings` table via the Supabase REST API.
+3. **Versioned metadata** – Each embedding row stores metadata (`source`, `regime`, `window`) enabling LangGraph agents to reason over provenance and drift.
+4. **Automation hooks** – SQL in `supabase/sql/signal_embedding_triggers.sql` defines triggers and RPCs that notify agents whenever embeddings change.
 
-#### 2. **Feature Generator Stack**
-- **Self-supervised encoders**: `ts2vec`, `series2vec`, `DeepLOB`, `InceptionTime`
-- **Symbolic regression**: `pysr`, `AI-Feynman`, symbolic distillation from NN layers
-- **TDA / Topology**: `giotto-tda`, `ripser`, `scikit-tda`
-- **Microstructure + Anomaly**: Custom logic for OFI, spread z-scores, bid-ask imbalance
-- **Change-point detection**: `ruptures`, `bocpd`, `hmmlearn`, `tick.hawkes`
-- Output: Tabular and vector representations of signals per window
+### 3. Agentic Control Plane
 
-#### 3. **Vector Storage + Retrieval**
-- Feature vectors indexed using FAISS, Supabase pgvector, or Pinecone
-- Metadata: timestamps, asset, market regime, labeling info
-- Supports: KNN queries, regime-filtered search, hybrid symbol+vector similarity
+1. **Planner** – `agents/langgraph_chain.py` builds a `StateGraph` that evaluates intents and routes them to supported Supabase-aware tools (`propose_new_feature`, `run_backtest`, `prune_vectors`, `refresh_vector_store`).
+2. **Tooling** – `agents/tools.py` encapsulates Supabase RPC calls, table inserts, and vector maintenance primitives.
+3. **Memory & feedback** – Results from each tool call are written back into the agent state, enabling subsequent planner iterations or downstream agents.
 
-#### 4. **Modeling + Strategy Evaluation**
-- ML: `xgboost`, `lightgbm`, `catboost`, `sklearn`, `pytorch`
-- Backtesting: `vectorbt`, `bt`, `zipline-reloaded`, custom PnL engine
-- Labeling: Supervised (known outcome), weakly supervised (event-horizon triggers)
-- Metrics: Sharpe, Sortino, drawdown, hit rate, regime stability
+### 4. Strategy Evaluation
 
-#### 5. **GPT Agentic Layer**
-- Tools: `LangGraph`, `OpenAgents`, `AutoGen`, `CrewAI`
-- Accesses:
-  - Backtest logs / signal metadata
-  - Feature pipeline codebase
-  - Promptable API for: `retrain_model()`, `add_feature()`, `drop_feature()`
-- Capabilities:
-  - Planning retrains, proposing new feature chains
-  - Debugging strategy decay / drift
-  - Symbolic summarization of discovered features
+- **Backtesting** – Agents call `run_backtest()` which triggers the Supabase RPC `run_strategy_backtest`. The RPC can orchestrate vectorbt, custom SQL simulations, or serverless jobs.
+- **Metric tracking** – Backtest outputs feed Supabase tables (`backtest_runs`, `strategy_metrics`) and optionally push analytics to dashboards.
+- **Decisioning** – Agents use retrieved metrics to decide whether to refresh embeddings, prune stale vectors, or propose new features.
 
-#### 6. **Continual Learning Loop**
-- Rolling retrain pipelines
-- Feature pruning + survival tracking
-- Embedding reindexing and vector drift handling
-- Prompt-based agent interventions (e.g. "Explain why this feature failed last week")
+### 5. Deployment
 
-## System Use Case Plugability
-This architecture is **fully modular and use-case agnostic**. Each use case is simply a:
-- **New anchor event definition** (e.g. Form 4 date, macro release, price spike)
-- **Custom labeling rule** (e.g. did insider file X days later, did volatility spike Y days later)
-- **Specialized feature subset** (e.g. add news embeddings or TDA for one strategy)
+- **Realtime retraining** – Supabase triggers watch inserts into `signal_embeddings` and publish events that spawn retraining jobs or call LangGraph subgraphs.
+- **Artifact delivery** – Model checkpoints are stored in Supabase buckets. Deployment targets (Edge Functions, Kubernetes jobs, on-prem services) retrieve the latest artifact using signed URLs.
+- **Feedback ingestion** – Live trading performance is captured in Supabase, closing the loop for the GPT agents.
 
-The rest of the pipeline remains unchanged: the agent, feedback loop, retraining, and vector storage adapt automatically. This enables:
-- Parallel use cases coexisting (with independent vector indexes)
-- Regime-aware retrieval across domains
-- Scaling to any time-series or event-based alpha problem
+## Use Case Integration Pattern
 
-## Recommended Stack Add-ons
-- **Supabase Vector DB**: use Supabase Postgres with `pgvector` to store and search embeddings
-- **Supabase Realtime**: trigger retrain agents on new vector inserts
-- **Supabase Storage**: archive raw data snapshots or feature exports
+1. Implement a subclass of `StrategyUseCase` under `use_cases/<name>/pipeline.py` that builds the payload sent to the LangGraph agent.
+2. Store custom preprocessing, labeling, or data fetching logic alongside the pipeline file.
+3. Register embeddings in Supabase using `features/` helpers to make them discoverable by the agents.
+4. Document the workflow with a Markdown file inside the same folder for humans.
 
-## Next Steps
-- Define first use case (e.g. insider Form 4 anchored alpha)
-- Set up GitHub repo with modular folders: ingestion, features, models, db, agent
-- Run agentic prompt loop over backtest logs
-- Deploy vector DB with embedded signals
-- Evaluate retrieval quality and strategy recall accuracy
+## Extending the Framework
 
-This stack future-proofs the system for continual AI-driven financial intelligence evolution.
+- Add RPCs in Supabase to support new agent tools (for example, `score_signal_cluster`).
+- Introduce background workers that subscribe to Supabase realtime channels and invoke `build_langgraph_chain()` for asynchronous processing.
+- Expand the Docusaurus docs to include each strategy and its metrics, keeping architecture references in-sync with code.
