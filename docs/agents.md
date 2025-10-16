@@ -8,7 +8,8 @@ description: How LangGraph memory, guardrails, and Supabase-backed tools coordin
 
 The primary agent entry point is `agents/langgraph_chain.py`, which adheres to the guardrails and role expectations defined in
 `AGENTS.md`. The chain wraps a LangGraph `StateGraph` with explicit short-term and long-term memory so that tool outcomes can be
-replayed and persisted to Supabase. For a system-wide reference, see
+replayed and persisted to Supabase. `build_langgraph_chain()` wires a LangGraph `MemorySaver` checkpointer when available so
+threads can resume seamlessly across CLI sessions. For a system-wide reference, see
 [`docs/architecture/quant_ai_strategy_design.md`](architecture/quant_ai_strategy_design.md).
 
 ### State & Memory
@@ -30,7 +31,7 @@ commit that would fail CI. Additional paths can be injected through `task_contex
 
 | Tool | Purpose | Supabase Integration |
 | --- | --- | --- |
-| `propose_new_feature` | Writes versioned modules under `features/` and upserts metadata into `feature_registry` | `record_feature()` helper (id, name, version, path, meta) |
+| `propose_new_feature` | Writes versioned modules under `features/` and upserts metadata into `feature_registry` | `insert_feature()` helper (id, name, version, path, meta) |
 | `run_backtest` | Runs `backtest/engine.py`, uploads summary JSON & plots to storage, records rows in `backtest_results` | Storage uploads + `insert_backtest_result()` (`config`, `metrics`, `artifacts`) |
 | `prune_vectors` | Archives stale pgvector rows based on recency, t-stat, and regime coverage | RPC: `rpc_prune_vectors` |
 | `refresh_vector_store` | Regenerates TS2Vec embeddings and upserts into `signal_embeddings` | `insert_embeddings()` |

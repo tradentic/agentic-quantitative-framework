@@ -75,6 +75,20 @@ def _load_langchain_support() -> dict[str, Any]:
     return support
 
 
+def _load_checkpointer() -> Any | None:
+    """Return a LangGraph checkpointer implementation when available."""
+
+    try:
+        module = import_module("langgraph.checkpoint.memory")
+    except ModuleNotFoundError:
+        logger.debug(
+            "LangGraph checkpoint memory module not available; "
+            "falling back to stateless execution.",
+        )
+        return None
+    return getattr(module, "MemorySaver", None)
+
+
 def _detect_intent(request: str) -> str | None:
     lowered = request.lower()
     if any(keyword in lowered for keyword in ("feature", "ts2vec", "encoder")):
@@ -252,8 +266,11 @@ def _route_from_reflection(state: AgentState) -> str:
 
 
 def build_langgraph_chain() -> Any:
+    """Return a stateful LangGraph planner with checkpointing and tool routing."""
+
     runtime = _load_langgraph_runtime()
     support = _load_langchain_support()
+    memory_factory = _load_checkpointer()
 
     state_graph = runtime["StateGraph"](AgentState)
     state_graph.add_node("plan", lambda state: _plan_node(state, support))
@@ -273,7 +290,19 @@ def build_langgraph_chain() -> Any:
         _route_from_reflection,
         {"END": runtime["END"], "plan": "plan"},
     )
-    return state_graph.compile()
+
+    compile_kwargs: dict[str, Any] = {}
+    if callable(memory_factory):
+        compile_kwargs["checkpointer"] = memory_factory()
+
+    chain = state_graph.compile(**compile_kwargs)
+    if hasattr(chain, "config"):
+        # Expose tool metadata so callers can introspect supported operations when resuming threads.
+        chain.config = {
+            "tools": sorted(TOOL_REGISTRY),
+            "short_term_window": SHORT_TERM_WINDOW,
+        }
+    return chain
 
 
 __all__ = ["AgentState", "build_langgraph_chain"]

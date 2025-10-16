@@ -1,65 +1,42 @@
 -- Seed data for local development of the Agentic Quantitative Framework.
 
-insert into public.feature_registry (id, name, version, path, description, status, meta)
+insert into public.feature_registry (id, name, version, path, meta)
 values (
-    '00000000-0000-0000-0000-000000000001',
-    'ts2vec_price_window',
-    'v1',
-    'features/generate_ts2vec_embeddings.py',
-    'Baseline TS2Vec embedding feature for price windows.',
-    'active',
-    jsonb_build_object('window', 64, 'horizon', '1h')
+  '00000000-0000-0000-0000-0000000000f1',
+  'ts2vec_v1',
+  '0.1.0',
+  'features/generate_ts2vec_embeddings.py',
+  '{"notes":"demo seed"}'::jsonb
 )
 on conflict (id) do update
-    set description = excluded.description,
-        status = excluded.status,
-        meta = excluded.meta,
-        updated_at = timezone('utc', now());
-
-insert into public.signal_embeddings (id, asset_symbol, time_range, embedding, regime_tag, label, meta)
-values (
-    '00000000-0000-0000-0000-000000000101',
-    'AAPL',
-    '[2024-01-01 00:00:00+00,2024-01-01 01:00:00+00)'::tstzrange,
-    '[0.3444, 0.258, -0.0794, -0.2411, 0.0113, -0.0951, 0.2838, -0.1967, -0.0234, 0.0834, 0.4081, 0.0047, -0.2182, 0.2558, 0.1184, -0.2495, 0.4097, 0.4828, 0.3102, 0.4022, -0.1899, 0.2298, 0.3988, 0.184, -0.0279, -0.3993, -0.0658, 0.1109, 0.413, 0.4666, -0.023, 0.3653, -0.2395, 0.305, 0.0487, -0.486, 0.2197, -0.1012, 0.3248, 0.1682, -0.4989, -0.0064, 0.3676, -0.2561, -0.1748, 0.3705, -0.3089, 0.0675, -0.2614, 0.4675, 0.3032, -0.052, -0.4196, -0.1799, 0.0079, 0.4328, -0.3909, 0.0513, 0.2066, 0.0474, 0.3145, 0.0403, 0.4638, 0.1032, 0.0876, -0.055, 0.0963, -0.1151, 0.0757, -0.2097, -0.3106, -0.3133, 0.1128, 0.1567, -0.0235, -0.4102, 0.2576, 0.3768, 0.4234, 0.3425, 0.3982, 0.4231, 0.0406, -0.1087, 0.2053, -0.2244, 0.3116, 0.3495, 0.395, 0.0898, 0.4498, 0.0797, -0.0494, 0.1602, 0.4963, 0.4169, 0.2933, -0.4176, 0.1128, -0.0136, 0.1301, 0.3451, -0.257, 0.2315, -0.3829, -0.2795, 0.2946, -0.1675, 0.3159, -0.3994, -0.3536, 0.1977, -0.4548, 0.0739, 0.41, 0.0342, 0.1806, -0.4733, 0.135, 0.1063, 0.076, -0.1088, -0.1299, 0.4805, -0.4636, -0.4784, 0.461, -0.315]'::vector(128),
-    'calm',
-    jsonb_build_object('label', 'baseline'),
-    jsonb_build_object('source', 'seed', 't_stat', 0.8, 'regime_count', 5)
-)
-on conflict (id) do update
-    set time_range = excluded.time_range,
-        embedding = excluded.embedding,
-        regime_tag = excluded.regime_tag,
-        label = excluded.label,
-        meta = excluded.meta,
-        updated_at = timezone('utc', now());
+  set path = excluded.path,
+      meta = excluded.meta;
 
 insert into public.backtest_results (id, config, metrics, artifacts)
 values (
-    '00000000-0000-0000-0000-000000000201',
-    jsonb_build_object('strategy_id', 'mean_reversion_v1', 'lookback', 20, 'threshold', 1.5),
-    jsonb_build_object('sharpe', 1.7, 'sortino', 2.3, 'max_drawdown', -0.12),
-    jsonb_build_object(
-        'summary', 'model-artifacts/backtests/mean_reversion_v1/20240101000000/summary.json',
-        'plot', 'model-artifacts/backtests/mean_reversion_v1/20240101000000/equity_curve.png'
-    )
+  '00000000-0000-0000-0000-0000000000b1',
+  '{"strategy":"demo","window":"2024-01-01/2024-01-15"}'::jsonb,
+  '{"sharpe":0.0,"max_drawdown":0.0,"n_trades":0}'::jsonb,
+  '{"plots":["storage://backtests/demo_equity_curve.png"]}'::jsonb
 )
 on conflict (id) do update
-    set config = excluded.config,
-        metrics = excluded.metrics,
-        artifacts = excluded.artifacts,
-        created_at = timezone('utc', now());
+  set config = excluded.config,
+      metrics = excluded.metrics,
+      artifacts = excluded.artifacts;
 
-insert into public.embedding_jobs (id, asset_symbol, windows, metadata, status)
+insert into public.signal_embeddings (id, asset_symbol, time_range, embedding, regime_tag, label, meta)
 values (
-    '00000000-0000-0000-0000-000000000301',
-    'AAPL',
-    '[{"timestamp": "2024-01-02T00:00:00+00:00", "values": [1.0, 0.5, 0.25]}]'::jsonb,
-    jsonb_build_object('priority', 'high'),
-    'pending'
+  '00000000-0000-0000-0000-0000000000e1',
+  'AAPL',
+  tstzrange('2024-01-02 09:30:00+00','2024-01-02 16:00:00+00','[)'),
+  '[0.001,0.002,0.003,0.004,0.005,0.006,0.007,0.008,0.009,0.01,0.011,0.012,0.013,0.014,0.015,0.016,0.017,0.018,0.019,0.02,0.021,0.022,0.023,0.024,0.025,0.026,0.027,0.028,0.029,0.03,0.031,0.032,0.033,0.034,0.035,0.036,0.037,0.038,0.039,0.04,0.041,0.042,0.043,0.044,0.045,0.046,0.047,0.048,0.049,0.05,0.051,0.052,0.053,0.054,0.055,0.056,0.057,0.058,0.059,0.06,0.061,0.062,0.063,0.064,0.065,0.066,0.067,0.068,0.069,0.07,0.071,0.072,0.073,0.074,0.075,0.076,0.077,0.078,0.079,0.08,0.081,0.082,0.083,0.084,0.085,0.086,0.087,0.088,0.089,0.09,0.091,0.092,0.093,0.094,0.095,0.096,0.097,0.098,0.099,0.1,0.101,0.102,0.103,0.104,0.105,0.106,0.107,0.108,0.109,0.11,0.111,0.112,0.113,0.114,0.115,0.116,0.117,0.118,0.119,0.12,0.121,0.122,0.123,0.124,0.125,0.126,0.127,0.128]'::vector(128),
+  'demo',
+  '{"y_next":0}'::jsonb,
+  '{"notes":"seed"}'::jsonb
 )
 on conflict (id) do update
-    set windows = excluded.windows,
-        metadata = excluded.metadata,
-        status = excluded.status,
-        updated_at = timezone('utc', now());
+  set time_range = excluded.time_range,
+      embedding = excluded.embedding,
+      regime_tag = excluded.regime_tag,
+      label = excluded.label,
+      meta = excluded.meta;

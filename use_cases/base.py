@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from agents.langgraph_chain import AgentState, build_langgraph_chain
 
@@ -41,4 +41,5 @@ class StrategyUseCase:
             },
             messages=request.messages,
         )
-        return chain.invoke(state)
+        result = chain.invoke(state)
+        return cast(AgentState, result)
