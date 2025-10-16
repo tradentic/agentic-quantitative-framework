@@ -12,6 +12,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 import yaml
 
+from features.pca_fingerprint import PCA_COMPONENTS
+
 from framework.provenance import OFFEX_FEATURE_VERSION
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 from use_cases.base import StrategyUseCase, UseCaseRequest
@@ -351,7 +353,7 @@ def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Mo
     window_days = int(options.get("window_days", 7) or 7)
     window_start = (trade_date - timedelta(days=abs(window_days))).isoformat()
     window_end = trade_date.isoformat()
-    target_dim = int(options.get("fingerprint_size", 256) or 256)
+    target_dim = int(options.get("fingerprint_size", PCA_COMPONENTS) or PCA_COMPONENTS)
     signal_name = str(options.get("signal_name", "insider_offexchange")).strip() or "insider_offexchange"
     signal_version = str(options.get("signal_version", "v1")).strip() or "v1"
     use_pca = bool(options.get("use_pca", True))
