@@ -14,7 +14,7 @@
   - *Outputs*: Upserts (or in-memory lists when `persist=False`) of daily market-structure ratios from `flows/compute_offexchange_features.py`.
 - **`compute-intraday`**
   - *Inputs*: Mirrors `compute-offexchange` while a dedicated intraday aggregator is finalised; accepts `trade_date`, optional symbol filters, and persistence toggle.
-  - *Outputs*: Uses the same flow to provide smoke-test coverage for intraday QC until the standalone intraday flow lands.
+  - *Outputs*: Delegates to `flows/compute_intraday_features.py:compute_intraday_features`, which currently proxies to the off-exchange computation for smoke-test coverage.
 - **`fingerprints`**
   - *Inputs*: Asset symbol, embedder configuration sequence, numeric feature frame or records, optional metadata/timestamps.
   - *Outputs*: Pgvector payloads assembled by `flows/embeddings_and_fingerprints.py:fingerprint_vectorization` (or returned when Supabase is unavailable).
