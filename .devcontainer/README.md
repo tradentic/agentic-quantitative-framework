@@ -27,7 +27,7 @@ A portable Codespaces/devcontainer that readies a **Supabase-first** environment
   * Starts Supabase (`supabase start`) if not already running
   * Runs `.devcontainer/scripts/sync-supabase-env.mjs` to generate **`.env.local`** from `supabase status`
   * Prefers Supabase **Publishable/Secret** keys; falls back to **Anon/Service Role**; **backfills both ways** so either style works
-  * Boots Prefect (`prefect server start --background --host 0.0.0.0 --port 4200`) and pins `PREFECT_API_URL` to the local server once healthy
+  * Boots Prefect via Docker (`prefecthq/prefect:3-latest`) exposing port **4200**, updates local CLI config, and ensures a Docker work pool + worker container are online
 
 > For script internals and flags, see **[SCRIPTS.md](./SCRIPTS.md)**.
 
