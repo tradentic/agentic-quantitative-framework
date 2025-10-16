@@ -9,6 +9,8 @@ This folder contains automation for building, validating, and publishing the sta
 * **codex-autofix.yml** — On CI failure, Codex applies a minimal fix and opens a PR. Docs: `docs/workflows/codex-automation.md`.
 * **docs-deploy.yml** — Ephemeral Docusaurus build that publishes everything in `docs/`. Docs: `docs/workflows/core-ci-and-docs.md`.
 * **ci.yml** — Build + smoke + a11y; uploads evidence. Docs: `docs/workflows/core-ci-and-docs.md`.
+* **ci-validate-embeddings.yml** — Installs the Python package and runs `scripts/audit_vector_dims.py` to ensure fingerprint width stays at 128.
+* **ci-validate-prefect.yml** — Installs test dependencies and executes `pytest tests/flows/test_entrypoints.py` so every Prefect deployment entrypoint resolves to a real flow.
 * **drift-reconcile.yml** — Weekly scaffold refresh PR. Docs: `docs/workflows/core-ci-and-docs.md`.
 
 ## One‑time setup
