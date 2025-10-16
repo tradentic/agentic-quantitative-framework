@@ -1,40 +1,39 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.poetry/
+.venv/
+.mypy_cache/
+.pytest_cache/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Node/Docusaurus artifacts
+node_modules/
+docs/node_modules/
+.yarn/
+.pnpm-store/
 
-# testing
-/coverage
+# Build outputs
+build/
+dist/
+.coverage
+htmlcov/
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
+# Editor and OS noise
 .DS_Store
 *.pem
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
+# Environment files
 .env
+.env.local
+.env.*
+!.env.example
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# supabase
+# Supabase runtime directories
 supabase/.branches
 supabase/.temp

@@ -1,38 +1,55 @@
-# Local Development with Supabase CLI
+# Local Development
 
-This project is fully compatible with local-first development using the `supabase` CLI.
+Follow these steps to run the Agentic Quantitative Framework locally with the
+Supabase CLI.
 
 ## Prerequisites
-- Docker installed
-- [Supabase CLI](https://supabase.com/docs/guides/cli) installed (`brew install supabase`)
-- Python 3.10+, Poetry or virtualenv
 
-## Setup Steps
+- Docker
+- Supabase CLI (`brew install supabase/tap/supabase` or download from releases)
+- Python 3.11+
+- Poetry (`pipx install poetry` or use the devcontainer)
+- Node.js 18+ (for the documentation site)
+
+## Initial Setup
 
 ```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/agentic-quantitative-framework.git
+# Clone the repository
+git clone https://github.com/<your-org>/agentic-quantitative-framework.git
 cd agentic-quantitative-framework
 
-# Initialize Supabase local
-supabase init
+# Install Python dependencies
+poetry install --no-root
+
+# Start Supabase locally
 supabase start
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your Supabase keys and project reference
+# Prepare pgvector tables
+psql postgresql://postgres:postgres@localhost:54322/postgres \
+  -f supabase/vector_db/setup_pgvector.sql
 
-# Create Python virtual environment
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Copy environment variables
+cp .env.example .env
 ```
 
-## Supabase Services Used
-- PostgreSQL (with pgvector extension)
-- Storage (for raw data or model snapshots)
-- Realtime (agent triggers, data event tracking)
+Populate `.env` with your Supabase keys plus any model API keys the agents
+require.
 
-## Vector DB Configuration
-Use `supabase/vector_db/setup_pgvector.sql` to enable pgvector and initialize similarity tables.
+## Running Agents
 
+```bash
+poetry run python -m agents.langgraph_chain
+```
+
+This executes the LangGraph planner end-to-end and prints the resulting state.
+
+## Documentation Site
+
+```bash
+cd docs
+npm install
+npm run start
+```
+
+The docs server listens on http://localhost:3000 and documents the architecture
+and workflows.

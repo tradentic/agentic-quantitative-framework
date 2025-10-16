@@ -1,39 +1,35 @@
-# PR title
+# PR Title
 
-## Description
-Explain what changed and why. Link issues (e.g., closes #123) and include screenshots for UI changes.
+## Summary
+Describe what changed and why. Link issues (e.g., closes #123) and attach
+screenshots for UI updates when relevant.
 
-## Type of change
+## Type of Change
 - [ ] Fix (bug)
 - [ ] Feature / task
 - [ ] Docs
 - [ ] CI / tooling
 
-## How to test
+## Testing Instructions
 Provide exact commands and expected outcomes.
 
 ```sh
 # example
-pnpm build
-pnpm test:smoke
-pnpm test:a11y
+poetry run pytest
+poetry run ruff check .
+npm run --prefix docs build
 ```
 
 ## Checklist
-- [ ] I ran `pnpm build` locally with no errors
-- [ ] I ran `pnpm test:smoke` and `pnpm test:a11y` (if applicable)
-- [ ] Secrets are not leaked into client bundles (build guard passes)
-- [ ] Updated docs where necessary (README / SPEC / DEVENV / QA)
-- [ ] Added or updated evidence (screenshots in `evidence/` or CI artifacts)
-- [ ] For scripts/CI, commands are non-interactive and idempotent
-- [ ] `scaffold.lock.json` updated if the scaffold/tools changed
+- [ ] `poetry run ruff check .` passes locally
+- [ ] `poetry run pytest` passes locally (if applicable)
+- [ ] Supabase secrets are not committed
+- [ ] Documentation updated (`README`, `docs/`, etc.) where necessary
+- [ ] CI workflows updated when command sets change
 
 ---
 
 ### For coding agents
-Follow repo conventions:
-- **Do not** scaffold into subfolders
-- Use **pnpm** (Corepack non-interactive)
-- Prefer **Publishable/Secret** Supabase keys; backfill Anon/Service Role
-- Keep PR diffs minimal and focused; include file paths and reasons in commit messages
-
+- Prefer **Poetry** for dependency management
+- Keep Supabase environment variables out of version control
+- Keep diffs focused and reference impacted modules in commit messages

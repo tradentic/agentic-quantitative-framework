@@ -1,66 +1,39 @@
 # Devcontainer Overview
 
-A portable Codespaces/devcontainer that readies a **Next.js + Supabase** environment for scaffolding and local dev.
+A reproducible development environment tailored for the **Agentic Quantitative
+Framework**.
 
-## What this sets up
+## Toolchain
 
-* **Base image**: Ubuntu 24.04 with Docker‑in‑Docker
-* **Tooling**: Node **24** (Corepack/PNPM enabled), Supabase CLI, optional AI CLIs (see `scripts/`)
-* **Ports**: 3000 (Next), 54321/54322/54323/54324/54327 (Supabase stack)
+* **Base image**: Ubuntu 24.04 with Docker-in-Docker for the Supabase stack
+* **Python**: 3.11 with Poetry pre-installed
+* **Node.js**: 18.x for Docusaurus docs and UI tooling
+* **Supabase CLI**: available globally for local-first database workflows
 
 ## Lifecycle hooks
 
-**Exactly what runs and why** — restored in full detail:
+* `postCreateCommand` → runs `.devcontainer/scripts/post-create.sh`
+  * Installs Python dependencies with Poetry when `pyproject.toml` exists
+  * Installs docs dependencies via `npm install` inside `docs/`
+* `postStartCommand` → runs `.devcontainer/scripts/post-start.sh`
+  * Ensures the Supabase stack is running locally
+  * Calls `scripts/infra/sync-supabase-env.mjs` to refresh `.env.local`
 
-* `updateContentCommand`: noop (the repo may not have a `package.json` yet, so we don’t install deps prematurely)
-* `postCreateCommand`: runs `.devcontainer/scripts/post-create.sh`
+## Ports
 
-  * Enables corepack/pnpm
-  * Installs deps **only if** `package.json` exists
-  * Installs **Supabase CLI**
-  * Installs **OpenAI Codex CLI** via **pnpm global** (no npm/brew)
-  * *(Optional, if enabled in the script)* Installs **Anthropic Claude Code CLI** via **pnpm global**
-* `postStartCommand`: runs `.devcontainer/scripts/post-start.sh`
+Port forwarding is configured for:
 
-  * Starts Supabase (`supabase start`) if not already running
-  * Runs `.devcontainer/scripts/sync-supabase-env.mjs` to generate **`.env.local`** from `supabase status`
-  * Prefers Supabase **Publishable/Secret** keys; falls back to **Anon/Service Role**; **backfills both ways** so either style works
+* `3000` — Docusaurus dev server
+* `54321` — Supabase API Gateway
+* `54322` — Supabase Postgres
 
-> For script internals and flags, see **[SCRIPTS.md](./SCRIPTS.md)**.
-
-## Extensions
-
-Default VS Code extensions are minimal and **security‑aware** (ESLint, Axe Linter, Markdownlint, plus workflow helpers). Coding‑agent extensions are **suggested**, not installed. See **[EXTENSIONS.md](./EXTENSIONS.md)** for policy and secret‑leak notes.
-
-## Environment sync (summary)
-
-On start or on demand you can run:
+## Quick verification
 
 ```bash
-.devcontainer/scripts/sync-supabase-env.mjs --out .env.local
+poetry --version
+npm --version
+supabase --version
 ```
 
-This parses `supabase status` and writes the modern keys:
-
-* `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-* server‑only `SUPABASE_SECRET_KEY`
-
-It also maps/backs‑fills legacy names:
-
-* `NEXT_PUBLIC_SUPABASE_ANON_KEY` ↔ publishable, and `SUPABASE_SERVICE_ROLE_KEY` ↔ secret
-
-## Quick checks
-
-```bash
-supabase --version || echo 'supabase missing'
-node -v && pnpm -v
-```
-
-## Troubleshooting
-
-* **CLI not on PATH** after install: add `$(pnpm bin -g)` or `$HOME/.local/bin` to `PATH`.
-* **No `.env.local`**: ensure Supabase is running, then run the sync script with `--out`.
-
-## Why commit this?
-
-Keeping a stable, documented environment checked in makes your “latest CNA” scaffolds predictable while letting app code stay fresh.
+These commands should succeed inside the container. If they do not, rebuild the
+container and re-run `post-create.sh`.

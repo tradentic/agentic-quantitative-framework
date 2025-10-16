@@ -20,7 +20,7 @@ This project uses GPT-5-level agents to serve as strategic planners, feature eng
 ### 2. Strategy Evaluation Agent
 - Read backtest logs and Sharpe metrics
 - Suggest retraining schedules or model refresh
-- Write configs to `config/model_config.yaml`
+- Write configs to `config/model/` manifests and `config/schedules/`
 
 ### 3. Vector Intelligence Agent
 - Monitor embedding quality and drift

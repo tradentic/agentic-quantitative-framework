@@ -5,20 +5,26 @@ import {themes as prismThemes} from 'prism-react-renderer';
 
 const themeConfig: ThemeConfig = {
   navbar: {
-    title: 'Starter Docs',
+    title: 'Agentic Quantitative Framework',
     logo: {
-      alt: 'Next.js + Supabase Starter logo',
+      alt: 'Agentic Quantitative Framework logo',
       src: 'img/logo.svg',
     },
     items: [
       {
         type: 'doc',
-        docId: 'intro',
+        docId: 'overview',
         position: 'left',
-        label: 'Intro',
+        label: 'Overview',
       },
       {
-        href: 'https://github.com/airnub/next-supabase-i18n-a11y-starter',
+        type: 'doc',
+        docId: 'agents',
+        position: 'left',
+        label: 'Agents',
+      },
+      {
+        href: 'https://github.com/agentic-quantitative/agentic-quantitative-framework',
         label: 'GitHub',
         position: 'right',
       },
@@ -31,8 +37,12 @@ const themeConfig: ThemeConfig = {
         title: 'Docs',
         items: [
           {
-            label: 'Getting Started',
+            label: 'Overview',
             to: '/',
+          },
+          {
+            label: 'Architecture',
+            to: '/architecture',
           },
         ],
       },
@@ -40,17 +50,13 @@ const themeConfig: ThemeConfig = {
         title: 'Community',
         items: [
           {
-            label: 'GitHub Discussions',
-            href: 'https://github.com/airnub/next-supabase-i18n-a11y-starter/discussions',
-          },
-          {
-            label: 'Issues',
-            href: 'https://github.com/airnub/next-supabase-i18n-a11y-starter/issues',
+            label: 'GitHub Issues',
+            href: 'https://github.com/agentic-quantitative/agentic-quantitative-framework/issues',
           },
         ],
       },
     ],
-    copyright: `© ${new Date().getFullYear()} Next.js + Supabase Starter`,
+    copyright: `© ${new Date().getFullYear()} Agentic Quantitative Framework`,
   },
   prism: {
     theme: prismThemes.github,
@@ -59,13 +65,13 @@ const themeConfig: ThemeConfig = {
 };
 
 const config: Config = {
-  title: 'Next.js + Supabase Starter Docs',
-  tagline: 'Documentation for the Next.js, Supabase, i18n, and a11y starter kit',
+  title: 'Agentic Quantitative Framework Docs',
+  tagline: 'LangGraph-native research automation for quantitative signals',
   favicon: 'img/logo.svg',
-  url: 'https://airnub.github.io',
-  baseUrl: '/next-supabase-i18n-a11y-starter/',
-  organizationName: 'airnub',
-  projectName: 'next-supabase-i18n-a11y-starter',
+  url: 'https://agentic-quantitative.github.io',
+  baseUrl: '/',
+  organizationName: 'agentic-quantitative',
+  projectName: 'agentic-quantitative-framework',
   onBrokenLinks: 'throw',
   trailingSlash: false,
   markdown: {
@@ -84,8 +90,6 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: join(__dirname, 'sidebars.ts'),
-          editUrl:
-            'https://github.com/airnub/next-supabase-i18n-a11y-starter/tree/main/docs/',
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
         },

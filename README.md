@@ -1,26 +1,61 @@
 # Agentic Quantitative Framework
 
-A modular, agent-driven framework for discovering and learning predictive financial signals using self-supervised learning, symbolic modeling, and vector-based signal memory.
+A LangGraph-native research stack for discovering quantitative trading signals.
+The framework blends agentic planners, feature factories, deterministic
+backtests, and Supabase-backed vector memory into a cohesive workflow.
 
-## Key Features
-- Self-supervised encoders (TS2Vec, DeepLOB)
-- Symbolic regression and neural distillation
-- GPT-agentic feedback loops (LangGraph / AutoGen)
-- Vector database for signal memory and similarity
-- Pluggable use cases (insider trading, regime shifts, etc.)
-- Supabase-native local stack
+## Repository Structure
 
-## Repo Structure
-- `agents/`: GPT-driven strategic planners
-- `features/`: Feature generators, encoders, and pipelines
-- `vector_db/`: Embedding logic and Supabase vector integration
-- `backtest/`: Model evaluation and signal replay
-- `use_cases/`: Concrete instantiations (e.g., insider_trading)
-- `config/`: Model + pipeline config files
-- `scripts/`: Ingestion jobs, retrain schedulers
+- `agents/` — LangGraph planners plus tool functions (`propose_new_feature`,
+  `run_backtest`, `prune_vectors`, `refresh_vector_store`).
+- `features/` — Feature generation scripts (e.g., TS2Vec embeddings).
+- `backtests/` — Scenario manifests, jobs, and reports for evaluating signals.
+- `vector_db/` — pgvector helpers and monitoring utilities.
+- `config/` — Shared configuration for models, features, and schedules.
+- `use_cases/` — Domain-specific playbooks such as insider trading loops.
+- `docs/` — Docusaurus site for architecture, agents, and deployment guides.
+- `scripts/infra/` — Infrastructure automation (Supabase env sync, etc.).
+- `supabase/` — Local Supabase project configuration and migrations.
 
-## Setup
-See `LOCAL_DEV_SETUP.md` for full Supabase CLI-based development guide.
+## Quickstart
 
-## Authoring Agents
-See `AGENTS.md` for how feature and strategy agents interact with system components.
+```bash
+# Clone and enter the repository
+git clone https://github.com/<your-org>/agentic-quantitative-framework.git
+cd agentic-quantitative-framework
+
+# Bootstrap Python environment
+poetry install --no-root
+
+# Start Supabase locally
+supabase start
+psql postgresql://postgres:postgres@localhost:54322/postgres \
+  -f supabase/vector_db/setup_pgvector.sql
+
+# Run the LangGraph planner
+poetry run python -m agents.langgraph_chain
+```
+
+See [`LOCAL_DEV_SETUP.md`](./LOCAL_DEV_SETUP.md) for the full development
+environment guide, including devcontainer usage.
+
+## Documentation
+
+The Docusaurus site in `docs/` ships with placeholder pages:
+
+- Overview of the Agentic Quantitative Framework
+- Agent orchestration and tooling
+- Architecture reference
+- Deployment checklist
+
+Launch the docs locally with:
+
+```bash
+cd docs
+npm install
+npm run start
+```
+
+## License
+
+This project is open-sourced under the [MIT License](./LICENSE).

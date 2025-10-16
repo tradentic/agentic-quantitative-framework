@@ -1,36 +1,23 @@
-# VS Code Extensions — Secure Defaults
+# VS Code Extensions
 
-Extensions can read files and environment variables; some send telemetry. Treat them as potential **secret exfiltration** vectors.
+Extensions can read workspace files and environment variables. Install only
+what you trust.
 
-## Defaults (installed by devcontainer)
+## Included by default
 
-- `dbaeumer.vscode-eslint` — ESLint
-- `deque-systems.vscode-axe-linter` — Accessibility linting
-- `DavidAnson.vscode-markdownlint` — Markdown quality
-- (Plus workflow helpers already in `devcontainer.json`: Tailwind IntelliSense, GitHub Actions/PRs, Supabase extension)
+- `dbaeumer.vscode-eslint` — for linting the docs site when applicable
+- `DavidAnson.vscode-markdownlint` — keeps documentation consistent
+- `github.vscode-github-actions` and `GitHub.vscode-pull-request-github`
+- `Supabase.vscode-supabase-extension` — manages the local stack
 
-> **Intentionally not installed**: coding‑agent chat extensions; keep secrets safer by using CLIs when possible.
+## Optional additions
 
-## Removed / not recommended here
+- `ms-python.python` — rich Python language support (installed manually)
+- `charliermarsh.ruff` — integrates Ruff if you prefer linting in-editor
+- `prisma.prisma` — if you edit Supabase schemas frequently
 
-- **Prettier extension** — removed to avoid unwanted formatting churn. Use `pnpm format` in CI if you add Prettier at the app level.
-- **Chrome Extension Dev Tools** — not relevant to this repo.
+## Safety tips
 
-## Suggested (not installed by default)
-
-- `openai.chatgpt`
-- `anthropic.claude-code`
-- `saoudrizwan.claude-dev` (Cline)
-
-Prefer **CLIs** instead of editor extensions when working with secrets:
-
-- `codex` (OpenAI Codex CLI)
-- `claude` (Anthropic Claude Code CLI)
-- Optional: `gemini`, `goose`, `plandex` (see `scripts/` installers)
-
-## Hardening tips
-
-- Keep extension list minimal in `devcontainer.json`.
-- Disable extension auto‑updates on critical workspaces.
-- Avoid pasting secrets into extension sidebars.
-- Use a separate window for editing highly sensitive files.
+- Disable auto-updates for extensions that interact with secrets.
+- Use the CLI equivalents (`poetry`, `supabase`) when handling credentials.
+- Consider a separate VS Code profile when working with production keys.

@@ -31,12 +31,14 @@ else
 fi
 
 # Directly call the env sync script (no package.json required)
+SYNC_ENV_SCRIPT="${REPO_ROOT}/scripts/infra/sync-supabase-env.mjs"
+
 if [[ "${supabase_ready}" == "true" ]]; then
-  if [[ -x "${SCRIPT_DIR}/sync-supabase-env.mjs" ]]; then
+  if [[ -x "${SYNC_ENV_SCRIPT}" ]]; then
     echo "[post-start] Syncing .env.local from Supabase status..."
-    "${SCRIPT_DIR}/sync-supabase-env.mjs" --out ".env.local" || true
+    "${SYNC_ENV_SCRIPT}" --out ".env.local" || true
   else
-    echo "[post-start] Env sync script not found/executable: ${SCRIPT_DIR}/sync-supabase-env.mjs" >&2
+    echo "[post-start] Env sync script not found/executable: ${SYNC_ENV_SCRIPT}" >&2
   fi
 else
   echo "[post-start] Skipping env sync because Supabase services are not available." >&2

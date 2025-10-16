@@ -1,0 +1,12 @@
+docs:
+  - 'docs/**'
+agents:
+  - 'agents/**'
+  - 'features/**'
+backtests:
+  - 'backtests/**'
+infra:
+  - '.devcontainer/**'
+  - 'scripts/infra/**'
+  - 'supabase/**'
+  - '.github/**'

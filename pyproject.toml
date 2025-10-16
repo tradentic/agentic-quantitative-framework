@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "agentic-quantitative-framework"
+version = "0.1.0"
+description = "LangGraph-native agentic workflow for quantitative research"
+authors = ["Agentic Quantitative Framework Maintainers <maintainers@example.com>"]
+license = "MIT"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+langgraph = ">=0.0.59,<0.2"
+langchain = ">=0.1.0,<0.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.0"
+ruff = "^0.6.4"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+extend-select = ["I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

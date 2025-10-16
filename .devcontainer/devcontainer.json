@@ -1,25 +1,25 @@
 {
-  "name": "@airnub/agentic-quantitive-framework",
+  "name": "agentic-quantitative-framework",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11",
+      "installPoetry": true
+    },
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "24",
-      "installPnpm": true,
-      "pnpmVersion": "10.17.1"
-    }
+      "version": "18"
+    },
+    "ghcr.io/devcontainers/features/supabase-cli:1": {}
   },
   "updateContentCommand": "bash -lc 'true'",
   "postCreateCommand": ".devcontainer/scripts/post-create.sh",
   "postStartCommand": ".devcontainer/scripts/post-start.sh",
-  "forwardPorts": [3000, 54321, 54322, 54323, 54324, 54327],
+  "forwardPorts": [3000, 54321, 54322],
   "portsAttributes": {
-    "3000": { "label": "Next.js" },
+    "3000": { "label": "Docusaurus" },
     "54321": { "label": "Supabase API" },
-    "54322": { "label": "Supabase Postgres" },
-    "54323": { "label": "Supabase Studio" },
-    "54324": { "label": "Supabase Mailpit" },
-    "54327": { "label": "Supabase Logflare" }
+    "54322": { "label": "Supabase Postgres" }
   },
   "customizations": {
     "vscode": {
