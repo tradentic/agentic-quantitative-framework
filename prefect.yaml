@@ -75,7 +75,7 @@ deployments:
       metadata_columns: []
       timestamps: []
       base_metadata: {}
-      target_dim: 256
+      target_dim: 128
       use_pca: true
       table_name: signal_fingerprints
     schedule:
