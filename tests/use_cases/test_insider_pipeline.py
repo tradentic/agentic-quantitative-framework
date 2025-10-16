@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
+from features.pca_fingerprint import PCA_COMPONENTS
 from use_cases.insider_trading.pipeline import (
     InsiderTradingPipeline,
     ModuleDefaults,
@@ -180,6 +181,72 @@ def test_run_fingerprints_uses_daily_features(monkeypatch: pytest.MonkeyPatch) -
     assert result["status"] == "ok"
     assert result["fingerprints"] == 1
     assert captured["numeric_features"][0]["window_end"] == "2024-12-30"
+
+
+def test_run_fingerprints_defaults_to_pca_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import date
+
+    feature_rows = [
+        {
+            "symbol": "ACME",
+            "trade_date": "2024-12-30",
+            "short_vol_share": 0.12,
+            "short_exempt_share": 0.01,
+            "ats_share_of_total": 0.2,
+            "provenance": {"source_url": ["http://example.com"]},
+        }
+    ]
+
+    class _Query:
+        def __init__(self, data):
+            self._data = data
+
+        def select(self, *_):
+            return self
+
+        def eq(self, *_):
+            return self
+
+        def in_(self, *_):
+            return self
+
+        def execute(self):
+            return type("Resp", (), {"data": self._data})()
+
+    class _Client:
+        def table(self, name: str):
+            assert name == "daily_features"
+            return _Query(feature_rows)
+
+    monkeypatch.setattr(
+        "use_cases.insider_trading.pipeline.get_supabase_client", lambda: _Client()
+    )
+
+    captured: dict[str, Any] = {}
+
+    class _StubFingerprintFlow:
+        @staticmethod
+        def fn(**kwargs: Any):
+            captured.update(kwargs)
+            return []
+
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints.fingerprint_vectorization",
+        _StubFingerprintFlow,
+    )
+
+    runtime = PipelineRuntime(
+        mode="score",
+        trade_date=date(2024, 12, 30),
+        date_from=None,
+        date_to=None,
+        symbols=("ACME",),
+    )
+    result = run_fingerprints(runtime, {})
+    assert result["status"] == "ok"
+    assert captured["target_dim"] == PCA_COMPONENTS
 
 
 def test_run_scans_queries_similarity(monkeypatch: pytest.MonkeyPatch) -> None:

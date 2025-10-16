@@ -14,7 +14,7 @@ module_defaults:
   fingerprints:
     enabled: true
     options:
-      fingerprint_size: 256
+      fingerprint_size: 128
       signal_name: insider_offexchange
       signal_version: v1
       feature_version: fingerprint-offexchange-v1
