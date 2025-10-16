@@ -3,7 +3,8 @@
 This module exposes a light-weight DeepLOB implementation that focuses on
 producing penultimate-layer embeddings for limit order book (LOB) snapshots.
 It provides an ergonomic loader that can hydrate weights on either CPU or GPU
-and a batch inference helper that returns an embedding per input window.
+and a batch inference helper that returns a 128-dimensional embedding per
+input window.
 """
 
 from __future__ import annotations
@@ -157,6 +158,18 @@ def _load_torch_artifacts() -> _TorchArtifacts:
     return _TORCH_ARTIFACTS
 
 
+def _project_embeddings_to_dim(embeddings: Tensor, target_dim: int, torch_mod: Any) -> Tensor:
+    """Zero-pad or truncate embeddings to match ``target_dim``."""
+
+    current_dim = embeddings.shape[-1]
+    if current_dim == target_dim:
+        return embeddings
+    if current_dim < target_dim:
+        pad_width = target_dim - current_dim
+        return torch_mod.nn.functional.pad(embeddings, (0, pad_width))
+    return embeddings[..., :target_dim]
+
+
 @dataclass(frozen=True)
 class DeepLOBConfig:
     """Configuration for the simplified DeepLOB encoder."""
@@ -165,6 +178,7 @@ class DeepLOBConfig:
     conv_channels: Sequence[int] = (16, 32, 64)
     inception_channels: int = 64
     lstm_hidden_size: int = 64
+    embedding_dim: int = 128
     dropout: float = 0.1
     batch_norm_momentum: float = 0.1
 
@@ -179,6 +193,8 @@ class DeepLOBConfig:
             raise ValueError("`inception_channels` must be positive.")
         if self.lstm_hidden_size <= 0:
             raise ValueError("`lstm_hidden_size` must be positive.")
+        if self.embedding_dim <= 0:
+            raise ValueError("`embedding_dim` must be positive.")
         if not 0.0 <= self.dropout < 1.0:
             raise ValueError("`dropout` must be in [0, 1).")
 
@@ -217,7 +233,7 @@ def deeplob_embeddings(
     batch_size: int = 32,
     device: Device | str | None = None,
 ) -> Any:
-    """Generate DeepLOB embeddings for the provided book tensor."""
+    """Generate 128-dimensional DeepLOB embeddings for the provided book tensor."""
 
     torch, _, data_loader, tensor_dataset, _ = _load_torch_artifacts()
     if batch_size <= 0:
@@ -241,9 +257,12 @@ def deeplob_embeddings(
     loader = data_loader(dataset, batch_size=batch_size)
 
     outputs: list[Any] = []
+    target_dim = getattr(getattr(model, "config", None), "embedding_dim", 128)
+
     with torch.no_grad():
         for (batch,) in loader:
             embeddings = model.extract_embeddings(batch)
+            embeddings = _project_embeddings_to_dim(embeddings, target_dim, torch)
             outputs.append(embeddings.cpu())
     return torch.cat(outputs, dim=0)
 
