@@ -38,6 +38,6 @@ flows:
 	prefect deployment apply prefect.yaml
 
 setup-supabase-env:
-        cp .env.example .env.local
+	cp .env.example .env.local
 	node .devcontainer/scripts/sync-supabase-env.mjs
 	@echo "Update .env with your Supabase keys and project reference."
