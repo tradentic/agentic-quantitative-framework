@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import lru_cache
 from importlib import import_module, util
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, validator
@@ -107,27 +107,27 @@ class BacktestResult(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     strategy_id: str
-    run_at: datetime = Field(default_factory=datetime.utcnow)
     config: dict[str, Any]
     metrics: dict[str, Any]
-    artifacts_path: str | None = None
+    artifacts: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 @dataclass
 class FeatureRegistryEntry:
     """Structured representation for entries in the feature registry."""
 
-    feature_id: UUID = field(default_factory=uuid4)
+    id: UUID = field(default_factory=uuid4)
     name: str = ""
     version: str = ""
-    file_path: str = ""
+    path: str = ""
     description: str = ""
     status: str = "proposed"
-    metadata: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        payload["feature_id"] = str(self.feature_id)
+        payload["id"] = str(self.id)
         return payload
 
 
@@ -169,7 +169,7 @@ def insert_backtest_result(result: BacktestResult | dict[str, Any]) -> dict[str,
     model = result if isinstance(result, BacktestResult) else BacktestResult(**result)
     payload = model.dict()
     payload["id"] = str(payload["id"])
-    payload["run_at"] = payload["run_at"].isoformat()
+    payload["created_at"] = payload["created_at"].isoformat()
     client = get_supabase_client()
     response = client.table("backtest_results").insert(payload).execute()
     return getattr(response, "data", payload)
@@ -197,8 +197,11 @@ def record_feature(
 
     payload = entry.as_dict() if isinstance(entry, FeatureRegistryEntry) else entry
     client = get_supabase_client()
-    response = client.table("feature_registry").upsert(payload).execute()
-    return getattr(response, "data", payload)
+    response = client.table("feature_registry").upsert(payload, on_conflict="id").execute()
+    data = getattr(response, "data", None)
+    if data is None:
+        return payload
+    return cast(list[dict[str, Any]] | dict[str, Any], data)
 
 
 def store_artifact_json(path: str, content: dict[str, Any], *, bucket: str | None = None) -> str:

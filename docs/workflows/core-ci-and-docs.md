@@ -88,7 +88,7 @@ pnpm build && pnpm test:smoke && pnpm test:a11y
 **Prereqs**
 
 * Pages Source: **GitHub Actions**
-* Node 20 runner (set in workflow)
+* Node 24 runner (set in workflow)
 
 **Gotchas**
 

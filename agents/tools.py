@@ -63,10 +63,10 @@ def propose_new_feature(feature_payload: dict[str, Any]) -> dict[str, Any]:
     entry = FeatureRegistryEntry(
         name=name,
         version=version,
-        file_path=str(feature_path.relative_to(Path.cwd())),
+        path=str(feature_path.relative_to(Path.cwd())),
         description=feature_payload.get("description", ""),
         status=feature_payload.get("status", "proposed"),
-        metadata=metadata,
+        meta=metadata,
     )
     registry_rows = record_feature(entry)
 
@@ -122,21 +122,23 @@ def run_backtest(backtest_config: dict[str, Any]) -> dict[str, Any]:
         str(plot_path),
     )
 
+    artifacts = {
+        "summary": storage_summary_path,
+        "plot": storage_plot_path,
+    }
+
     backtest_record = BacktestResult(
         strategy_id=strategy,
         config=backtest_config,
         metrics=summary,
-        artifacts_path=",".join(filter(None, [storage_summary_path, storage_plot_path])),
+        artifacts=artifacts,
     )
     insert_backtest_result(backtest_record)
 
     return {
         "action": "run_backtest",
         "result": summary,
-        "artifacts": {
-            "summary": storage_summary_path,
-            "plot": storage_plot_path,
-        },
+        "artifacts": artifacts,
     }
 
 

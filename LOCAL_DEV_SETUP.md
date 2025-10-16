@@ -1,29 +1,28 @@
-# Local Development with Supabase CLI
+# Local Development Setup
 
-This project is fully compatible with local-first development using the `supabase` CLI.
+The Agentic Quantitative Framework is designed for a Supabase-first, local workflow. The sections below walk through the
+recommended commands for bootstrapping the database, Prefect orchestration, and Python tooling.
 
-## Prerequisites
-- Docker installed
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase`)
+## 1. Prerequisites
+
+- Docker (required by the Supabase CLI)
+- [Supabase CLI](https://supabase.com/docs/guides/cli) `>= 1.150`
 - Python 3.11+
-- Node.js 24+
-- Poetry or pip for Python dependency management
+- Node.js 24 LTS (for docs and optional frontends)
 
-## Setup Steps
+Clone the repository and create a virtual environment with the provided `Makefile` target:
 
 ```bash
-# Clone the repo
 git clone https://github.com/YOUR_USERNAME/agentic-quantitative-framework.git
 cd agentic-quantitative-framework
+make dev
+```
 
-# Initialize Supabase local
-supabase init
-supabase start
+> The `make dev` target provisions `.venv` and installs the editable package along with lint/type-check tooling.
 
-# Apply database schema and RPC helpers
-supabase db push
-supabase db execute --file supabase/sql/signal_embedding_triggers.sql
+If you prefer to bootstrap the environment manually, the following commands mirror what the automation performs:
 
+```bash
 # Set up environment variables
 cp .env.example .env
 # Edit .env with your Supabase keys and project reference
@@ -36,21 +35,77 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Supabase Services Used
-- PostgreSQL (with pgvector extension)
-- Storage (for raw data or model snapshots)
-- Realtime (agent triggers, data event tracking)
+## 2. Supabase Local Stack
 
-## Sync Supabase environment variables
-
-Run the Supabase CLI locally (`supabase start`) so that `supabase status` reports all of the generated connection details. You can then mirror those values into `.env.local` files by running the provided helper:
+Start the full Supabase stack (Postgres + auth + storage) locally:
 
 ```bash
-node .devcontainer/scripts/sync-supabase-env.mjs
+supabase start
 ```
 
-By default the script updates `.env.local` at the repo root and the `apps/airnub` and `apps/speckit` workspaces if they exist. Pass a custom file path with `--out path/to/.env.local` when you need to sync a single target. Re-run the script any time you restart Supabase locally to keep the environment variables in sync.
+### Reset the Database
 
-## Vector DB Configuration
-Use `supabase/sql/signal_embedding_triggers.sql` as a starting point for enabling pgvector and registering automation triggers.
+Apply all migrations and reseed the database in one step. This command is safe to run whenever you need a clean slate:
 
+```bash
+supabase db reset --local
+```
+
+### Push New Migrations
+
+When you add new migrations and want to apply them without a full reset, target the local stack explicitly:
+
+```bash
+supabase db push --local --dry-run
+supabase db push --local
+```
+
+Later, if you link a remote Supabase project (`supabase link`), reuse `supabase db push --linked` to mirror the same schema.
+
+Supabase automatically executes `supabase/seed.sql` during `db reset`, populating feature registry, signal embeddings, and a
+sample backtest result for smoke-testing LangGraph tools and Prefect flows.
+
+## 3. Prefect Orchestration
+
+Install Prefect (if it is not already present in your virtual environment) and verify the version:
+
+```bash
+pip install -U prefect
+prefect version
+```
+
+Launch the local Prefect server (UI + API). The server automatically applies its own migrations on startup:
+
+```bash
+prefect server start --host 127.0.0.1 --port 4200
+```
+
+With the server running, you can execute the local flows directly from this repository. For example, to recompute embeddings for
+pending jobs pulled from Supabase:
+
+```bash
+python flows/embedding_flow.py
+```
+
+Repeat the same pattern for `flows/backtest_flow.py` and `flows/prune_flow.py` when testing orchestration logic.
+
+## 4. Environment Variables
+
+Use `supabase status` after the stack boots to capture generated connection strings. The `.devcontainer/scripts`
+folder contains utilities for syncing those values into `.env.local` files if needed for front-end apps or additional
+services.
+
+## 5. Additional Tooling
+
+The `Makefile` exposes helpers for the most common workflows:
+
+```bash
+make supabase   # supabase start
+make resetdb    # supabase db reset --local
+make pushdb     # supabase db push --local
+make prefect    # prefect server start --host 127.0.0.1 --port 4200
+make lint       # ruff check + mypy
+```
+
+Refer to `docs/architecture/quant_ai_strategy_design.md` for the end-to-end system blueprint that these local commands
+support.

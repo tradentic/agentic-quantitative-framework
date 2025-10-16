@@ -1,4 +1,4 @@
-.PHONY: dev supabase docs flows test lint typecheck
+.PHONY: dev supabase resetdb pushdb prefect lint test docs flows
 
 VENV ?= .venv
 PYTHON ?= python3
@@ -15,23 +15,24 @@ dev: $(VENV)/bin/activate
 supabase:
 supabase start
 
+resetdb:
+supabase db reset --local
+
+pushdb:
+supabase db push --local
+
+prefect:
+prefect server start --host 127.0.0.1 --port 4200
+
+lint: $(VENV)/bin/activate
+$(VENV)/bin/ruff check .
+$(VENV)/bin/mypy .
+
+test: lint
+$(VENV)/bin/pytest
+
 docs:
 pnpm --filter docs dev
 
 flows:
-prefect server start --host 0.0.0.0 & \
-SERVER_PID=$$!; \
-sleep 5; \
-prefect deployment apply prefect.yaml; \
-wait $$SERVER_PID
-
-test:
-ruff check .
-mypy .
-pytest
-
-lint:
-ruff check .
-
-typecheck:
-mypy .
+prefect deployment apply prefect.yaml

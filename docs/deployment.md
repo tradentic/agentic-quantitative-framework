@@ -6,41 +6,55 @@ description: Deploying Supabase-first agents, Prefect flows, and documentation.
 
 ## Environments
 
-- **Local** – Supabase CLI (`supabase start`), Prefect server (`prefect server start`), and the `.devcontainer` ensure Python
-  3.11, Node.js 24, Supabase CLI, and LangGraph dependencies.
-- **Staging** – Hosted Supabase project mirroring local schema. Prefect Orion agents run in the same VPC and connect back to the
-  Supabase Postgres instance via service-role keys.
-- **Production** – Supabase managed Postgres with observability enabled; workers run on Kubernetes or serverless platforms and
-  subscribe to Supabase realtime events and Prefect deployments.
+- **Local** – Start Supabase with `supabase start`, apply migrations via `supabase db push --local`, and run Prefect locally
+  (`prefect server start --host 127.0.0.1 --port 4200`). The `.devcontainer` captures the Python, Node.js 24 LTS, and Supabase CLI
+  versions used by CI.
+- **Staging** – Mirror the local schema in a managed Supabase project. Prefect agents run near the database and authenticate with
+  service-role keys for backtest writes and vector refresh jobs.
+- **Production** – Promote the same migrations with `supabase db push --linked` after linking the remote project. LangGraph agents
+  use Supabase RPCs, storage buckets, and pgvector indexes for long-term memory.
 
-## Deployment Steps
+## Local Deployment Steps
 
-1. **Migrate** – Use `supabase db push` to apply schema changes, triggers, and RPC updates (including `rpc_refresh_embeddings`
-   and `rpc_prune_vectors`).
-2. **Build agents** – Package the Python runtime with `pyproject.toml` dependencies, ensuring environment variables (`SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`) are provided.
-3. **Configure Prefect** – Start Prefect locally (`prefect server start`), then register deployments via `prefect deployment apply
-   prefect.yaml`. Prefect flows publish logs for embedding refreshes, scheduled backtests, and pruning jobs.
-4. **Ship artifacts** – Upload trained models to Supabase storage buckets and update metadata rows so agents and flows retrieve
-   the latest versions.
-5. **Monitor** – Stream Supabase logs, track RPC latencies, inspect Prefect UI for retries, and export agent decisions for audit.
+1. **Start Supabase services**
+   ```bash
+   supabase start
+   ```
+2. **Reset or migrate the database**
+   ```bash
+   supabase db reset --local          # applies migrations + supabase/seed.sql
+   supabase db push --local --dry-run # validate pending migrations
+   supabase db push --local           # apply without a full reset
+   ```
+3. **Launch Prefect for orchestration**
+   ```bash
+   pip install -U prefect
+   prefect server start --host 127.0.0.1 --port 4200
+   ```
+   Prefect applies its own schema migrations on startup. Run flows directly for smoke tests, e.g. `python flows/embedding_flow.py`.
+4. **Ship artifacts** – Upload new feature scripts or model outputs to Supabase storage (see `agents/tools.py` helpers) and update
+   registry tables so agents discover them automatically.
+5. **Monitor** – Track `backtest_results` and `signal_embeddings` tables in Supabase Studio, and use the Prefect UI to observe
+   scheduled flows (`scheduled-backtest-runner`, `supabase-embedding-refresh`, `scheduled-vector-prune`).
 
 ## Prefect Adoption
 
-See [ADR 0003](architecture/adr/0003-use-prefect-for-orchestration.md) for the decision to standardize on Prefect. Key benefits:
+See [architecture/quant_ai_strategy_design.md](architecture/quant_ai_strategy_design.md) for the canonical blueprint describing
+how LangGraph planners, Supabase storage, and Prefect orchestration interact. Prefect was selected for:
 
-- Local-first developer experience with Python-native flows and automatic retries.
-- Simple promotion path from local orchestration to Prefect Cloud without rewriting code.
-- Unified logging and scheduling for LangGraph agents, Supabase RPCs, and embedding refresh jobs.
+- Python-native, local-first development with automatic retries and logging.
+- Seamless promotion from a local server to Prefect Cloud without rewriting flows.
+- Tight integration with Supabase RPC triggers and vector maintenance jobs.
 
 ## Zero-Downtime Tips
 
-- Use feature flags stored in Supabase tables to gate new strategies before general rollout.
-- Maintain blue/green buckets for model artifacts and flip references atomically in the database.
-- Schedule regular vector pruning with `prune_vectors` or the Prefect `nightly-prune-dev` deployment to keep pgvector indexes fast.
+- Gate new strategies with feature flags stored in Supabase tables before enabling them in production flows.
+- Keep dual storage prefixes for artifacts (`model-artifacts/backtests/...`) and update registry rows atomically when promoting a
+  new model.
+- Schedule pruning flows so the pgvector IVFFLAT index stays performant while archived data lands in `signal_embeddings_archive`.
 
 ## Security
 
-- Store service-role keys securely (GitHub Actions secrets, Vault) and expose read-only anon keys to UI clients only.
-- Enable Row Level Security (RLS) policies and restrict RPC execution to trusted roles.
-- Log all agent tool calls and Prefect flow runs for compliance and incident response.
+- Store Supabase service-role keys in secure secrets managers (e.g., GitHub Actions secrets, Vault).
+- Enable Row Level Security (RLS) on Supabase tables and restrict RPC execution to trusted roles.
+- Log every LangGraph tool call and Prefect flow run for auditability.
