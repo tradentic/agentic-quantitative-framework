@@ -4,7 +4,7 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
 
 ## Highlights
 
-- **LangGraph agent chain** – `agents/langgraph_chain.py` orchestrates tool calls for feature proposals, backtesting, vector pruning, and embedding refreshes with guardrailed static analysis.
+- **LangGraph planner** – `agents/langgraph_chain.py` orchestrates tool calls for feature proposals, backtesting, vector pruning, and embedding refreshes with guardrailed static analysis.
 - **Supabase tooling** – `agents/tools.py` wraps Supabase RPCs/tables, `framework/supabase_client.py` provides typed helpers, and `features/generate_ts2vec_embeddings.py` prepares pgvector rows.
 - **Prefect orchestration** – `flows/` contains Prefect 2.x flows for embedding refreshes, scheduled backtests, and nightly vector pruning defined in `prefect.yaml`.
 - **Use case modularity** – Add strategies under `use_cases/<name>/` with pipeline classes that build agent payloads.
@@ -39,7 +39,7 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
    ```
 5. Validate the agent graph:
    ```bash
-   python -c "from agents import build_langgraph_chain; build_langgraph_chain()"
+   python -c "from agents import build_planner; build_planner()"
    ```
 
 Refer to [`LOCAL_DEV_SETUP.md`](LOCAL_DEV_SETUP.md) and the docs site (`docs/`) for deeper guidance.

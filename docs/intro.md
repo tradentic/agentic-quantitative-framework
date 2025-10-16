@@ -21,7 +21,7 @@ This documentation hub explains how GPT-native agents, LangGraph workflows, and 
 
 1. Clone the repo and open it in the provided devcontainer.
 2. Run `supabase start` to provision the local stack.
-3. Execute `python -c "from agents import build_langgraph_chain; build_langgraph_chain()"` to validate the runtime.
+3. Execute `python -c "from agents import build_planner; build_planner()"` to validate the runtime.
 4. Explore the `use_cases/` directory to see how strategies plug into the framework.
 
 Refer back to these docs whenever you add new tools, Supabase RPCs, or strategy modules.

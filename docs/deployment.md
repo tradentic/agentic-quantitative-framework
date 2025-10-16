@@ -29,9 +29,11 @@ description: Deploying Supabase-first agents, Prefect flows, and documentation.
 3. **Launch Prefect for orchestration**
    ```bash
    pip install -U prefect
-   prefect server start --host 127.0.0.1 --port 4200
+   prefect server start
    ```
-   Prefect applies its own schema migrations on startup. Run flows directly for smoke tests, e.g. `python flows/embedding_flow.py`.
+   Prefect applies its own schema migrations on startup. If you want to point CLI commands at the local API explicitly, export
+   `PREFECT_API_URL=http://127.0.0.1:4200/api` in your shell. Run flows directly for smoke tests with
+   `prefect run python -m flows.embedding_flow` (and the analogous `flows.backtest_flow` / `flows.prune_flow`).
 4. **Ship artifacts** – Upload new feature scripts or model outputs to Supabase storage (see `agents/tools.py` helpers) and update
    registry tables so agents discover them automatically.
 5. **Monitor** – Track `backtest_results` and `signal_embeddings` tables in Supabase Studio, and use the Prefect UI to observe

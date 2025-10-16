@@ -15,7 +15,7 @@ The Python package at `use_cases/` contains reusable abstractions for strategy-s
 
 - `base.py` defines the `StrategyUseCase` base class that standardizes orchestration hooks.
 - `insider_trading/` demonstrates how to wire labeling, feature extraction, and agent prompts around a specific dataset.
-- `README.md` documents the registration process for adding additional strategies.
+- `docs/use_cases/README.md` documents the registration process for adding additional strategies.
 
 Each use case exports a `pipeline.py` module that agents call to assemble the context sent into LangGraph. Supporting
 artifacts—feature configs, prompts, and evaluation routines—live beside the pipeline to keep dependencies localized.

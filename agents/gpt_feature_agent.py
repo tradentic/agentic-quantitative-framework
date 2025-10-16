@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.langgraph_chain import AgentState, build_langgraph_chain
+from agents.langgraph_chain import run_planner
 
 
 def analyze_and_propose(
@@ -13,22 +13,23 @@ def analyze_and_propose(
 ) -> dict[str, Any]:
     """Invoke the LangGraph chain to generate a new feature proposal."""
 
-    chain = build_langgraph_chain()
-    state = AgentState(
-        task_context={
-            "intent": "propose_new_feature",
-            "payload": {
-                "name": feature_log.get("candidate_name"),
-                "description": feature_log.get("hypothesis"),
-                "metadata": {
-                    "source": "analyze_and_propose",
-                    "backtest_metrics": backtest_summary,
+    result_state = run_planner(
+        {
+            "context": {
+                "agent_id": "feature-agent",
+                "intent": "propose_new_feature",
+                "payload": {
+                    "name": feature_log.get("candidate_name"),
+                    "description": feature_log.get("hypothesis"),
+                    "metadata": {
+                        "source": "analyze_and_propose",
+                        "backtest_metrics": backtest_summary,
+                    },
                 },
-            },
-        },
+            }
+        }
     )
-    result_state = chain.invoke(state)
     return {
-        "state": result_state.task_context,
-        "results": result_state.results,
+        "state": result_state.get("context", {}),
+        "results": result_state.get("results", []),
     }

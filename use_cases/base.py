@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from agents.langgraph_chain import AgentState, build_langgraph_chain
+from agents.langgraph_chain import run_planner
 
 
 @dataclass
@@ -29,16 +29,17 @@ class StrategyUseCase:
     def build_request(self, **kwargs: Any) -> UseCaseRequest:
         raise NotImplementedError
 
-    def dispatch(self, **kwargs: Any) -> AgentState:
+    def dispatch(self, **kwargs: Any) -> dict[str, Any]:
         request = self.build_request(**kwargs)
-        chain = build_langgraph_chain()
-        state = AgentState(
-            task_context={
-                "intent": request.intent,
-                "payload": request.payload,
-                "model": request.model,
-                "requested_at": datetime.utcnow().isoformat(),
-            },
-            messages=request.messages,
+        return run_planner(
+            {
+                "context": {
+                    "agent_id": self.name,
+                    "intent": request.intent,
+                    "payload": request.payload,
+                    "model": request.model,
+                    "requested_at": datetime.utcnow().isoformat(),
+                },
+                "messages": request.messages,
+            }
         )
-        return chain.invoke(state)

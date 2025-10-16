@@ -34,9 +34,11 @@ on conflict (id) do update
         meta = excluded.meta,
         updated_at = timezone('utc', now());
 
-insert into public.backtest_results (id, config, metrics, artifacts)
+insert into public.backtest_results (id, strategy_id, run_at, config, metrics, artifacts)
 values (
     '00000000-0000-0000-0000-000000000201',
+    'mean_reversion_v1',
+    '2024-01-01T00:00:00+00:00',
     jsonb_build_object('strategy_id', 'mean_reversion_v1', 'lookback', 20, 'threshold', 1.5),
     jsonb_build_object('sharpe', 1.7, 'sortino', 2.3, 'max_drawdown', -0.12),
     jsonb_build_object(
@@ -45,9 +47,24 @@ values (
     )
 )
 on conflict (id) do update
-    set config = excluded.config,
+    set strategy_id = excluded.strategy_id,
+        run_at = excluded.run_at,
+        config = excluded.config,
         metrics = excluded.metrics,
         artifacts = excluded.artifacts,
+        created_at = timezone('utc', now());
+
+insert into public.backtest_requests (id, strategy_id, config, status)
+values (
+    '00000000-0000-0000-0000-000000000401',
+    'mean_reversion_v1',
+    jsonb_build_object('lookback', 30, 'threshold', 1.2),
+    'pending'
+)
+on conflict (id) do update
+    set strategy_id = excluded.strategy_id,
+        config = excluded.config,
+        status = excluded.status,
         created_at = timezone('utc', now());
 
 insert into public.embedding_jobs (id, asset_symbol, windows, metadata, status)

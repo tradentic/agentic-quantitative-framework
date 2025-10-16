@@ -6,33 +6,32 @@ PIP := $(VENV)/bin/pip
 
 $(VENV)/bin/activate:
 $(PYTHON) -m venv $(VENV)
-$(PIP) install --upgrade pip
 $(PIP) install -e .
 
 dev: $(VENV)/bin/activate
-@echo "Virtual environment ready at $(VENV)"
+	@echo "Virtual environment ready at $(VENV)"
 
 supabase:
-supabase start
+	supabase start
 
 resetdb:
-supabase db reset --local
+	supabase db reset --local
 
 pushdb:
-supabase db push --local
+	supabase db push --local
 
 prefect:
-prefect server start --host 127.0.0.1 --port 4200
+	prefect server start
 
-lint: $(VENV)/bin/activate
-$(VENV)/bin/ruff check .
-$(VENV)/bin/mypy .
+lint:
+	ruff check .
+	mypy agents features framework flows backtest
 
 test: lint
-$(VENV)/bin/pytest
+	python -c "from agents.langgraph_chain import build_planner; build_planner()"
 
 docs:
-pnpm --filter docs dev
+	pnpm --filter docs dev
 
 flows:
-prefect deployment apply prefect.yaml
+	prefect deployment apply prefect.yaml

@@ -30,7 +30,7 @@ The Agentic Quantitative Framework orchestrates GPT-native research agents, Supa
 1. **Ingestion & labeling** – Python jobs land raw market data, regulatory events, or fundamentals in Supabase tables. Use cases attach labels using RPC helpers.
 2. **Feature generation** – Feature scripts (for example `features/generate_ts2vec_embeddings.py`) produce embeddings and persist them to the `signal_embeddings` table via the Supabase REST API.
 3. **Versioned metadata** – Each embedding row stores metadata (`source`, `regime`, `window`) enabling LangGraph agents to reason over provenance and drift.
-4. **Automation hooks** – SQL in `supabase/sql/signal_embedding_triggers.sql` defines triggers and RPCs that notify agents whenever embeddings change.
+4. **Automation hooks** – Timestamped files in `supabase/migrations/` define triggers and RPCs that notify agents whenever embeddings change.
 
 ### 3. Agentic Control Plane
 
@@ -60,5 +60,5 @@ The Agentic Quantitative Framework orchestrates GPT-native research agents, Supa
 ## Extending the Framework
 
 - Add RPCs in Supabase to support new agent tools (for example, `score_signal_cluster`).
-- Introduce background workers that subscribe to Supabase realtime channels and invoke `build_langgraph_chain()` for asynchronous processing.
+- Introduce background workers that subscribe to Supabase realtime channels and invoke `build_planner()` for asynchronous processing.
 - Expand the Docusaurus docs to include each strategy and its metrics, keeping architecture references in-sync with code.

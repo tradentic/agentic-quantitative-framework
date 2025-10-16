@@ -60,7 +60,7 @@ supabase db push --local --dry-run
 supabase db push --local
 ```
 
-Later, if you link a remote Supabase project (`supabase link`), reuse `supabase db push --linked` to mirror the same schema.
+Later, if you link a remote Supabase project (`supabase link`), start with `supabase db push --linked --dry-run` before applying changes.
 
 Supabase automatically executes `supabase/seed.sql` during `db reset`, populating feature registry, signal embeddings, and a
 sample backtest result for smoke-testing LangGraph tools and Prefect flows.
@@ -77,17 +77,22 @@ prefect version
 Launch the local Prefect server (UI + API). The server automatically applies its own migrations on startup:
 
 ```bash
-prefect server start --host 127.0.0.1 --port 4200
+prefect server start
 ```
 
-With the server running, you can execute the local flows directly from this repository. For example, to recompute embeddings for
-pending jobs pulled from Supabase:
+Optionally point CLI commands at the local API by exporting:
 
 ```bash
-python flows/embedding_flow.py
+export PREFECT_API_URL=http://127.0.0.1:4200/api
 ```
 
-Repeat the same pattern for `flows/backtest_flow.py` and `flows/prune_flow.py` when testing orchestration logic.
+With the server running, execute the local flows directly from this repository. For example, to recompute embeddings for pending jobs pulled from Supabase:
+
+```bash
+prefect run python -m flows.embedding_flow
+```
+
+Repeat the same pattern for `flows.backtest_flow` and `flows.prune_flow` when testing orchestration logic.
 
 ## 4. Environment Variables
 
@@ -103,8 +108,17 @@ The `Makefile` exposes helpers for the most common workflows:
 make supabase   # supabase start
 make resetdb    # supabase db reset --local
 make pushdb     # supabase db push --local
-make prefect    # prefect server start --host 127.0.0.1 --port 4200
+make prefect    # prefect server start
 make lint       # ruff check + mypy
+make test       # ruff + mypy + LangGraph planner build
+```
+
+## 6. Agent Smoke Test
+
+After installing dependencies you can validate the planner wiring without Supabase credentials:
+
+```bash
+python -c "from agents.langgraph_chain import run_planner; print(run_planner({'hello': 'world'}))"
 ```
 
 Refer to `docs/architecture/quant_ai_strategy_design.md` for the end-to-end system blueprint that these local commands
