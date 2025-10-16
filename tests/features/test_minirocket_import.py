@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:  # pragma: no cover - defensive path setup
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from features.minirocket_embeddings import (  # noqa: E402
+from features.minirocket_embeddings import (
     DependencyUnavailable,
     SKTIME_AVAILABLE,
     generate_minirocket_embeddings,
