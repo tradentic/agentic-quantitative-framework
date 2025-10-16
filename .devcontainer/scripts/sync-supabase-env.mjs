@@ -13,11 +13,7 @@ function parseArgs() {
   return { out };
 }
 
-const DEFAULT_TARGET_FILES = [
-  '.env.local',
-  path.join('apps', 'airnub', '.env.local'),
-  path.join('apps', 'speckit', '.env.local')
-];
+const DEFAULT_TARGET_FILES = ['.env.local'];
 
 const { out } = parseArgs();
 const TARGET_FILES = out ? [out] : DEFAULT_TARGET_FILES;
