@@ -2,10 +2,12 @@
 
 from .backtest_flow import scheduled_backtest_runner
 from .embedding_flow import supabase_embedding_refresh
+from .embeddings_and_fingerprints import fingerprint_vectorization
 from .prune_flow import scheduled_vector_prune
 
 __all__ = [
     "scheduled_backtest_runner",
     "scheduled_vector_prune",
+    "fingerprint_vectorization",
     "supabase_embedding_refresh",
 ]
