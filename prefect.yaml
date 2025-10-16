@@ -30,3 +30,75 @@ deployments:
       max_age_days: 120
       min_t_stat: 0.25
       regime_diversity: 2
+  - name: ingest-sec-form4
+    flow_name: ingest-sec-form4
+    entrypoint: flows/ingest_sec_form4.py:ingest_form4
+    work_pool:
+      name: local-agent
+    parameters:
+      date_from: null
+      date_to: null
+    schedule:
+      # cron: "15 1 * * *"
+  - name: compute-offexchange
+    flow_name: compute-offexchange-features
+    entrypoint: flows/compute_offexchange_features.py:compute_offexchange_features
+    work_pool:
+      name: local-agent
+    parameters:
+      trade_date: null
+      symbols: []
+      persist: true
+    schedule:
+      # cron: "5 11 * * 2-6"
+  - name: compute-intraday
+    flow_name: compute-offexchange-features
+    entrypoint: flows/compute_offexchange_features.py:compute_offexchange_features
+    work_pool:
+      name: local-agent
+    parameters:
+      trade_date: null
+      symbols: []
+      persist: false
+    schedule:
+      # cron: "*/30 13-20 * * 1-5"
+  - name: fingerprints
+    flow_name: fingerprint-vectorization
+    entrypoint: flows/embeddings_and_fingerprints.py:fingerprint_vectorization
+    work_pool:
+      name: local-agent
+    parameters:
+      asset_symbol: null
+      embedder_configs: []
+      numeric_features: null
+      feature_columns: []
+      metadata_columns: []
+      timestamps: []
+      base_metadata: {}
+      target_dim: 256
+      use_pca: true
+      table_name: signal_fingerprints
+    schedule:
+      # cron: "0 6 * * 1"
+  - name: similarity-scans
+    flow_name: signal-similarity-scan
+    entrypoint: flows/similarity_scans.py:similarity_scan_flow
+    work_pool:
+      name: local-agent
+    parameters:
+      query_path: null
+      k: 5
+      output_dir: reports/similarity
+      user_filters: {}
+      allow_cross_symbol: false
+    schedule:
+      # cron: "30 2 * * *"
+  - name: backtest
+    flow_name: insider-prefiling-classifier-backtest
+    entrypoint: flows/backtest.py:insider_prefiling_backtest
+    work_pool:
+      name: local-agent
+    parameters:
+      config: null
+    schedule:
+      # cron: "0 4 * * 6"
