@@ -1,0 +1,84 @@
+name: "🐞 Bug report"
+description: "Something isn't working as expected. Help us reproduce and fix it."
+title: "bug: <short title>"
+labels: [bug]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! Please provide enough detail so both humans and **coding agents** can act deterministically.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Affected area(s)
+      options:
+        - label: Devcontainer / Codespaces (image, features, extensions)
+        - label: Scripts (post-create, post-start, installers)
+        - label: Supabase (CLI, local stack, env sync)
+        - label: Docs (SPEC/AGENTS/DEVENV/QA/CI)
+        - label: Docusaurus site / Docs deploy CI
+        - label: Other (describe below)
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: "Exact commands, files, and logs. Prefer copy/paste or a minimal repo."
+      placeholder: |
+        1. Open devcontainer
+        2. Run `.devcontainer/scripts/post-create.sh`
+        3. Observe error ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / logs
+      description: "Include full error output if possible"
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version details
+      description: "Node / PNPM / Supabase CLI / OS"
+      placeholder: "node 24.x, pnpm 10.17.1, supabase 2.48.3, ubuntu-latest"
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: "Codespaces, local Docker, or other?"
+  - type: textarea
+    id: links
+    attributes:
+      label: Evidence / links
+      description: "Screenshots, CI run, commit hash, PR link, etc."
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - critical (blocks usage)
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+  - type: checkboxes
+    id: agent
+    attributes:
+      label: Agent-ready checklist
+      options:
+        - label: Includes commands to reproduce from a fresh container
+          required: true
+        - label: Specifies expected vs actual in one sentence
+          required: true
+        - label: Includes relevant file paths (e.g., `.devcontainer/scripts/post-create.sh`)
+          required: true

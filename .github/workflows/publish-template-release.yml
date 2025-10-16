@@ -1,0 +1,36 @@
+name: publish-template-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Template branch to release (e.g., template/2025-10)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Read month tag
+        id: tag
+        run: |
+          b="${{ inputs.branch }}"
+          echo "tag=template-${b#template/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release from branch head
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ inputs.branch }}
+          body_path: PLAN.md
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
