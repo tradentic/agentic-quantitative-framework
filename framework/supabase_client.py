@@ -177,7 +177,11 @@ def insert_embeddings(records: Sequence[EmbeddingRecord | dict[str, Any]]) -> li
         serialized = model.model_dump()
         serialized["id"] = str(serialized["id"])
         payload.append(serialized)
-    response = client.table("signal_embeddings").upsert(payload).execute()
+    response = (
+        client.table("signal_embeddings")
+        .upsert(payload, on_conflict="asset_symbol,time_range")
+        .execute()
+    )
     data = getattr(response, "data", None)
     if data is None:
         return list(payload)

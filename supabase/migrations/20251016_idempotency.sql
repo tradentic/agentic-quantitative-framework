@@ -17,3 +17,7 @@ alter table if exists public.signal_fingerprints
 
 create unique index if not exists signal_fingerprints_uniq
   on public.signal_fingerprints (asset_symbol, window_start, window_end, version);
+
+-- signal_embeddings idempotent writes keyed by (asset_symbol, time_range)
+create unique index if not exists signal_embeddings_asset_time_range_uniq
+  on public.signal_embeddings (asset_symbol, time_range);
