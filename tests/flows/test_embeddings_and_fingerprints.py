@@ -208,3 +208,59 @@ def test_fingerprint_vectorization_builds_payload(monkeypatch: pytest.MonkeyPatc
     assert len(records) == 2
     assert records[0]["signal_name"] == "demo"
     assert records[0]["window_end"] == "2024-12-30"
+
+
+def test_fingerprint_vectorization_default_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _StubFuture:
+        def __init__(self, value: Any):
+            self._value = value
+
+        def result(self) -> Any:
+            return self._value
+
+    class _StubTask:
+        def __init__(self, fn):
+            self._fn = fn
+
+        def submit(self, rows, table_name):
+            return _StubFuture(self._fn(rows, table_name))
+
+    captured: dict[str, Any] = {}
+
+    def _capture(rows, table_name):
+        captured["rows"] = rows
+        captured["table"] = table_name
+        return rows
+
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints._persist",
+        _StubTask(_capture),
+    )
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints.get_run_logger",
+        lambda: logging.getLogger("test"),
+    )
+
+    df = pd.DataFrame(
+        {
+            "window_start": [pd.Timestamp("2024-01-01")],
+            "window_end": [pd.Timestamp("2024-01-02")],
+            "feature_a": [1.0],
+        }
+    )
+
+    fingerprint_vectorization.fn(
+        signal_name="demo",
+        signal_version="v1",
+        asset_symbol="ACME",
+        embedder_configs=[],
+        numeric_features=df,
+        feature_columns=["feature_a"],
+        metadata_columns=["window_start", "window_end"],
+        base_metadata={"feature_version": "fingerprint-demo", "source_url": ["memory"]},
+    )
+
+    assert captured["table"] == "signal_fingerprints"
+    assert len(captured["rows"]) == 1
+    fingerprint_lengths = {len(row["fingerprint"]) for row in captured["rows"]}
+    assert fingerprint_lengths == {128}

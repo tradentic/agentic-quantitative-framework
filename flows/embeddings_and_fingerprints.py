@@ -320,7 +320,7 @@ def fingerprint_vectorization(
     metadata_columns: Sequence[str] | None = None,
     timestamps: Sequence[datetime] | None = None,
     base_metadata: Mapping[str, Any] | None = None,
-    target_dim: int | None = 256,
+    target_dim: int | None = 128,
     use_pca: bool = True,
     table_name: str = "signal_fingerprints",
     provenance_overrides: Mapping[str, Any] | None = None,
@@ -362,6 +362,16 @@ def fingerprint_vectorization(
     aligned = align_dimensions(feature_matrix, target_dim=target_dim, use_pca=use_pca)
     logger.info("Aligned matrix shape: %s", aligned.shape)
 
+    expected_dim = target_dim or aligned.shape[1]
+    if aligned.shape[1] != expected_dim:
+        logger.warning(
+            "Aligned feature matrix width %d differs from expected %d; proceeding with %d.",
+            aligned.shape[1],
+            expected_dim,
+            aligned.shape[1],
+        )
+        expected_dim = aligned.shape[1]
+
     provenance = {
         "embedders": [config.name for config in enabled],
         "feature_columns": list(feature_columns or []),
@@ -393,6 +403,17 @@ def fingerprint_vectorization(
         table_name=table_name,
     )
     logger.info("Prepared %d fingerprint records", len(records))
+
+    invalid_lengths = [
+        (idx, len(row.get("fingerprint", [])))
+        for idx, row in enumerate(records)
+        if len(row.get("fingerprint", [])) != expected_dim
+    ]
+    if invalid_lengths:
+        raise ValueError(
+            "Fingerprint rows must contain %d values; found mismatches: %s"
+            % (expected_dim, invalid_lengths)
+        )
 
     persisted = _persist.submit(records, table_name).result()
     logger.info("Persisted %d fingerprint rows", len(persisted))
