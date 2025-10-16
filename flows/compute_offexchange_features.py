@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+import json
+import os
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable, Sequence
 
 from prefect import flow, get_run_logger, task
 
-from framework.finra_client import get_ats_week, get_short_volume
+from framework.finra_client import FINRA_SHORT_VOLUME_MARKET, get_ats_week, get_short_volume
+from framework.provenance import OFFEX_FEATURE_VERSION, hash_bytes, record_provenance
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+
+
+FINRA_BASE_URL = os.getenv("FINRA_BASE_URL", "https://cdn.finra.org/equity")
 
 
 def _week_ending(trade_date: date) -> date:
@@ -61,8 +67,25 @@ def _compute_features(symbol: str, trade_date: date, week_ending: date) -> dict[
     return record
 
 
+def _build_short_volume_sources(trade_date: date) -> list[str]:
+    stamp = trade_date.strftime("%Y%m%d")
+    market = FINRA_SHORT_VOLUME_MARKET
+    return [
+        f"{FINRA_BASE_URL}/regsho/daily/{market}shvol{stamp}.txt",
+        f"{FINRA_BASE_URL}/regsho/daily/{market}shvol{stamp}.txt.gz",
+    ]
+
+
+def _build_ats_sources(week_ending: date) -> list[str]:
+    stamp = week_ending.strftime("%Y%m%d")
+    return [
+        f"{FINRA_BASE_URL}/ATS/ATS_W_Summary_{stamp}.zip",
+        f"{FINRA_BASE_URL}/ATS/ATS_W_Summary_{stamp}.txt",
+    ]
+
+
 @task
-def persist_features(rows: Sequence[dict[str, object]]) -> int:
+def persist_features(trade_date: date, week_ending: date, rows: Sequence[dict[str, object]]) -> int:
     logger = get_run_logger()
     if not rows:
         logger.info("No off-exchange features to persist")
@@ -74,6 +97,18 @@ def persist_features(rows: Sequence[dict[str, object]]) -> int:
         return 0
     client.table("daily_features").upsert(list(rows), on_conflict="symbol,trade_date").execute()
     logger.info("Persisted %d off-exchange feature rows", len(rows))
+    provenance_meta = {
+        "feature_version": OFFEX_FEATURE_VERSION,
+        "source_url": _build_short_volume_sources(trade_date) + _build_ats_sources(week_ending),
+    }
+    for row in rows:
+        row_hash = hash_bytes(json.dumps(row, sort_keys=True, default=str).encode("utf-8"))
+        metadata = provenance_meta | {
+            "hash_sha256": row_hash,
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        pk = {"symbol": row["symbol"], "trade_date": row["trade_date"]}
+        record_provenance("daily_features", pk, metadata)
     return len(rows)
 
 
@@ -100,7 +135,7 @@ def compute_offexchange_features(
     )
     rows = [_compute_features(symbol, trade_date, week_end) for symbol in candidate_symbols]
     if persist:
-        persist_features.submit(rows).result()
+        persist_features.submit(trade_date, week_end, rows).result()
     return rows
 
 

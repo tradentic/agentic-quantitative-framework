@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable
 import xml.etree.ElementTree as ET
 
 from prefect import flow, get_run_logger
 
+from framework.provenance import FORM4_PARSER_VERSION, hash_bytes, record_provenance
 from framework.sec_client import (
     Form4IndexRow,
     ParsedForm4,
@@ -102,9 +103,11 @@ def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]
         for batch in _chunked(rows, BATCH_SIZE):
             filings_payload: list[dict[str, object]] = []
             transactions_payload: list[dict[str, object]] = []
+            batch_provenance: list[tuple[str, dict[str, object] | str, dict[str, object]]] = []
             for row in batch:
                 xml_url = accession_to_primary_xml_url(row.accession_path)
                 try:
+                    fetched_at = datetime.now(timezone.utc).isoformat()
                     xml_bytes = fetch_edgar_url(xml_url)
                 except FileNotFoundError:
                     logger.warning("Missing primary XML for accession %s", row.accession_number)
@@ -126,8 +129,24 @@ def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]
                         cik=parsed.cik or row.cik,
                         accession=row.accession_number,
                     )
-                filings_payload.append(_build_filing_record(row, parsed, xml_url))
-                transactions_payload.extend(_build_transaction_records(parsed))
+                xml_hash = hash_bytes(xml_bytes)
+                filing_record = _build_filing_record(row, parsed, xml_url)
+                filings_payload.append(filing_record)
+                filing_meta = {
+                    "source_url": xml_url,
+                    "xml_sha256": xml_hash,
+                    "parser_version": FORM4_PARSER_VERSION,
+                    "fetched_at": fetched_at,
+                }
+                batch_provenance.append(("edgar_filings", filing_record["accession_number"], filing_meta))
+                for txn_record in _build_transaction_records(parsed):
+                    transactions_payload.append(txn_record)
+                    txn_key = {
+                        "accession_number": txn_record["accession_number"],
+                        "transaction_date": txn_record["transaction_date"],
+                        "transaction_code": txn_record["transaction_code"],
+                    }
+                    batch_provenance.append(("insider_transactions", txn_key, filing_meta))
             batch_filings = len(filings_payload)
             batch_transactions = len(transactions_payload)
             if persistence_available:
@@ -139,6 +158,8 @@ def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]
                     transactions_payload,
                     conflict="accession_number,transaction_date,transaction_code",
                 )
+                for table_name, pk, meta in batch_provenance:
+                    record_provenance(table_name, pk, meta)
             else:
                 total_filings += batch_filings
                 total_transactions += batch_transactions
