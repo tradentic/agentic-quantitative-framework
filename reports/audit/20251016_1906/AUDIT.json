@@ -1,0 +1,264 @@
+{
+  "repo": {
+    "name": "agentic-quantitative-framework",
+    "branch": "work",
+    "sha": "9156502"
+  },
+  "capabilities": {
+    "vector_store": "present",
+    "ts2vec": "partial",
+    "minirocket": "missing",
+    "deeplob": "partial",
+    "microstructure": "present",
+    "vpin": "present",
+    "matrix_profile": "partial",
+    "change_points": "present",
+    "hawkes": "present",
+    "backtests": "present",
+    "similarity_scans": "present",
+    "use_case_glue": "present",
+    "provenance": "present",
+    "idempotency": "partial"
+  },
+  "features": [
+    {
+      "module": "change_points",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": ""
+    },
+    {
+      "module": "deeplob_embeddings",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": 64,
+      "notes": ""
+    },
+    {
+      "module": "generate_ts2vec_embeddings",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": 128,
+      "notes": ""
+    },
+    {
+      "module": "hawkes_features",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": ""
+    },
+    {
+      "module": "matrix_profile",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": ""
+    },
+    {
+      "module": "microstructure",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": ""
+    },
+    {
+      "module": "minirocket_embeddings",
+      "present": true,
+      "imports_ok": false,
+      "emb_dim": 10000,
+      "notes": "AttributeError: `np.float_` was removed in the NumPy 2.0 release. Use `np.float64` instead."
+    },
+    {
+      "module": "vpin",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": ""
+    }
+  ],
+  "flows": [
+    {
+      "path": "flows/__init__.py",
+      "entrypoints": [],
+      "deployed": false
+    },
+    {
+      "path": "flows/backtest.py",
+      "entrypoints": [
+        "insider_prefiling_backtest"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/backtest_flow.py",
+      "entrypoints": [
+        "scheduled_backtest_runner"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/compute_offexchange_features.py",
+      "entrypoints": [
+        "compute_offexchange_features"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/embedding_flow.py",
+      "entrypoints": [
+        "supabase_embedding_refresh"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/embeddings_and_fingerprints.py",
+      "entrypoints": [
+        "fingerprint_vectorization"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/ingest_sec_form4.py",
+      "entrypoints": [
+        "ingest_form4"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/prune_flow.py",
+      "entrypoints": [
+        "scheduled_vector_prune"
+      ],
+      "deployed": true
+    },
+    {
+      "path": "flows/similarity_scans.py",
+      "entrypoints": [
+        "similarity_scan_flow"
+      ],
+      "deployed": true
+    }
+  ],
+  "db": {
+    "pgvector": true,
+    "tables": [
+      {
+        "name": "signal_embeddings",
+        "present": true,
+        "columns": [
+          "id",
+          "asset_symbol",
+          "time_range",
+          "embedding",
+          "regime_tag",
+          "label",
+          "meta"
+        ]
+      },
+      {
+        "name": "signal_embeddings_archive",
+        "present": true,
+        "columns": [
+          "id",
+          "asset_symbol",
+          "time_range",
+          "embedding"
+        ]
+      },
+      {
+        "name": "feature_registry",
+        "present": true,
+        "columns": [
+          "id",
+          "name",
+          "version",
+          "path",
+          "meta"
+        ]
+      },
+      {
+        "name": "backtest_results",
+        "present": true,
+        "columns": [
+          "id",
+          "strategy_id",
+          "config",
+          "metrics",
+          "artifacts"
+        ]
+      },
+      {
+        "name": "embedding_jobs",
+        "present": true,
+        "columns": [
+          "id",
+          "asset_symbol",
+          "windows",
+          "status"
+        ]
+      },
+      {
+        "name": "edgar_filings",
+        "present": true,
+        "columns": [
+          "filing_id",
+          "accession_number",
+          "cik",
+          "symbol",
+          "filing_date",
+          "provenance"
+        ]
+      },
+      {
+        "name": "insider_transactions",
+        "present": true,
+        "columns": [
+          "transaction_id",
+          "accession_number",
+          "symbol",
+          "transaction_date",
+          "transaction_code"
+        ]
+      },
+      {
+        "name": "daily_features",
+        "present": true,
+        "columns": [
+          "symbol",
+          "trade_date",
+          "short_vol_share",
+          "provenance"
+        ]
+      },
+      {
+        "name": "signal_fingerprints",
+        "present": true,
+        "columns": [
+          "id",
+          "signal_name",
+          "version",
+          "asset_symbol",
+          "window_start",
+          "window_end",
+          "fingerprint"
+        ]
+      },
+      {
+        "name": "text_chunks",
+        "present": true,
+        "columns": [
+          "chunk_id",
+          "filing_id",
+          "embedding"
+        ]
+      }
+    ]
+  },
+  "questions": [
+    "Provide Supabase credentials for integration tests.",
+    "Confirm embedding dimensionality for TS2Vec/MiniRocket outputs.",
+    "Clarify deployment target for Prefect (Cloud vs local server)."
+  ]
+}
