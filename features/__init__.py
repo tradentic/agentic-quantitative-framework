@@ -7,4 +7,5 @@ __all__ = [
     "generate_ts2vec_embeddings",
     "compute_matrix_profile_metrics",
     "MatrixProfileFeatures",
+    "microstructure",
 ]
