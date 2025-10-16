@@ -3,7 +3,7 @@
 insert into public.feature_registry (id, name, version, path, description, status, meta)
 values (
     '00000000-0000-0000-0000-000000000001',
-    'ts2vec_v1',
+    'ts2vec_price_window',
     'v1',
     'features/generate_ts2vec_embeddings.py',
     'Baseline TS2Vec embedding feature for price windows.',
