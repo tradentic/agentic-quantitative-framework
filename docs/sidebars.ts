@@ -28,7 +28,7 @@ const sidebars: SidebarsConfig = {
       label: 'Use Cases',
       collapsible: true,
       collapsed: true,
-      items: ['use-cases-overview'],
+      items: ['use-cases-readme', 'use-cases-overview'],
     },
     {
       type: 'category',

@@ -18,8 +18,8 @@ from framework.supabase_client import (
     get_supabase_client,
     insert_backtest_result,
     insert_embeddings,
+    insert_feature,
     list_pending_embedding_jobs,
-    record_feature,
     store_artifact_file,
     store_artifact_json,
 )
@@ -68,7 +68,7 @@ def propose_new_feature(feature_payload: dict[str, Any]) -> dict[str, Any]:
         status=feature_payload.get("status", "proposed"),
         meta=metadata,
     )
-    registry_rows = record_feature(entry)
+    registry_rows = insert_feature(entry)
 
     registry_entry = (
         registry_rows[0] if isinstance(registry_rows, list) and registry_rows else registry_rows

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from functools import lru_cache
+from functools import lru_cache, wraps
 from importlib import import_module, util
-from typing import Any, cast
+from typing import Any, Callable, ParamSpec, TypeVar, cast  # noqa: UP035
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, validator
@@ -22,6 +23,8 @@ ENV_KEY_KEYS = (
 )
 
 DEFAULT_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "model-artifacts")
+DEFAULT_RETRY_ATTEMPTS = int(os.getenv("SUPABASE_RETRY_ATTEMPTS", "3"))
+DEFAULT_RETRY_BACKOFF = float(os.getenv("SUPABASE_RETRY_BACKOFF", "0.5"))
 
 
 class MissingSupabaseConfiguration(RuntimeError):
@@ -63,6 +66,38 @@ def get_supabase_client() -> Any:
         )
     factory = _load_supabase_client_factory()
     return factory(url, key)
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _retryable(*, attempts: int = DEFAULT_RETRY_ATTEMPTS, backoff: float = DEFAULT_RETRY_BACKOFF):
+    """Simple exponential backoff retry decorator for Supabase RPCs."""
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            delay = backoff
+            last_exception: Exception | None = None
+            for attempt in range(1, max(attempts, 1) + 1):
+                try:
+                    return func(*args, **kwargs)
+                except MissingSupabaseConfiguration:
+                    raise
+                except Exception as exc:  # pragma: no cover - defensive retry
+                    last_exception = exc
+                    if attempt >= max(attempts, 1):
+                        raise
+                    time.sleep(delay)
+                    delay *= 2
+            if last_exception is not None:  # pragma: no cover - guard
+                raise last_exception
+            raise RuntimeError("Retry wrapper exhausted without executing target function.")
+
+        return wrapper
+
+    return decorator
 
 
 def build_metadata(metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -131,6 +166,7 @@ class FeatureRegistryEntry:
         return payload
 
 
+@_retryable()
 def insert_embeddings(records: Sequence[EmbeddingRecord | dict[str, Any]]) -> list[dict[str, Any]]:
     """Bulk upsert embeddings into the `signal_embeddings` table."""
 
@@ -138,11 +174,36 @@ def insert_embeddings(records: Sequence[EmbeddingRecord | dict[str, Any]]) -> li
     payload: list[dict[str, Any]] = []
     for record in records:
         model = record if isinstance(record, EmbeddingRecord) else EmbeddingRecord(**record)
-        serialized = model.dict()
+        serialized = model.model_dump()
         serialized["id"] = str(serialized["id"])
         payload.append(serialized)
     response = client.table("signal_embeddings").upsert(payload).execute()
-    return getattr(response, "data", payload)
+    data = getattr(response, "data", None)
+    if data is None:
+        return list(payload)
+    return cast(list[dict[str, Any]], data)
+
+
+@_retryable()
+def nearest(
+    query_embedding: Sequence[float],
+    *,
+    k: int = 5,
+    filter_params: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Query the closest vectors using the `match_signal_embeddings` RPC."""
+
+    client = get_supabase_client()
+    payload = {
+        "query_embedding": list(query_embedding),
+        "match_count": k,
+        "filter": filter_params or {},
+    }
+    response = client.rpc("match_signal_embeddings", payload).execute()
+    data = getattr(response, "data", None)
+    if data is None:
+        return []
+    return cast(list[dict[str, Any]], data)
 
 
 def fetch_nearest(
@@ -151,28 +212,28 @@ def fetch_nearest(
     match_count: int = 5,
     filter_params: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Query the closest vectors using the `match_signal_embeddings` RPC."""
+    """Backward compatible wrapper for the `nearest` helper."""
 
-    client = get_supabase_client()
-    payload = {
-        "query_embedding": list(query_embedding),
-        "match_count": match_count,
-        "filter": filter_params or {},
-    }
-    response = client.rpc("match_signal_embeddings", payload).execute()
-    return getattr(response, "data", [])
+    return cast(
+        list[dict[str, Any]],
+        nearest(query_embedding, k=match_count, filter_params=filter_params),
+    )
 
 
+@_retryable()
 def insert_backtest_result(result: BacktestResult | dict[str, Any]) -> dict[str, Any]:
     """Insert a backtest result row into Supabase."""
 
     model = result if isinstance(result, BacktestResult) else BacktestResult(**result)
-    payload = model.dict()
+    payload = model.model_dump()
     payload["id"] = str(payload["id"])
     payload["created_at"] = payload["created_at"].isoformat()
     client = get_supabase_client()
     response = client.table("backtest_results").insert(payload).execute()
-    return getattr(response, "data", payload)
+    data = getattr(response, "data", None)
+    if data is None:
+        return payload
+    return cast(dict[str, Any], data)
 
 
 def list_failed_features(limit: int = 25) -> list[dict[str, Any]]:
@@ -190,7 +251,8 @@ def list_failed_features(limit: int = 25) -> list[dict[str, Any]]:
     return getattr(response, "data", [])
 
 
-def record_feature(
+@_retryable()
+def insert_feature(
     entry: FeatureRegistryEntry | dict[str, Any],
 ) -> list[dict[str, Any]] | dict[str, Any]:
     """Insert or update a feature registry entry in Supabase."""
@@ -202,6 +264,14 @@ def record_feature(
     if data is None:
         return payload
     return cast(list[dict[str, Any]] | dict[str, Any], data)
+
+
+def record_feature(
+    entry: FeatureRegistryEntry | dict[str, Any],
+) -> list[dict[str, Any]] | dict[str, Any]:
+    """Deprecated alias for `insert_feature` retained for backward compatibility."""
+
+    return cast(list[dict[str, Any]] | dict[str, Any], insert_feature(entry))
 
 
 def store_artifact_json(path: str, content: dict[str, Any], *, bucket: str | None = None) -> str:
@@ -288,8 +358,10 @@ __all__ = [
     "fetch_agent_state",
     "fetch_nearest",
     "get_supabase_client",
+    "insert_feature",
     "insert_backtest_result",
     "insert_embeddings",
+    "nearest",
     "list_failed_features",
     "list_pending_embedding_jobs",
     "mark_embedding_job_complete",
