@@ -1,8 +1,7 @@
-"""Smoke tests for the MiniRocket embedding module import path."""
+"""MiniRocket optional dependency tests."""
 
 from __future__ import annotations
 
-import importlib
 import sys
 from pathlib import Path
 
@@ -13,22 +12,30 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-
-module = importlib.import_module("features.minirocket_embeddings")
-
-
-def test_module_import_smoke() -> None:
-    assert hasattr(module, "generate_minirocket_embeddings")
-    assert hasattr(module, "SKTIME_AVAILABLE")
-
-
-@pytest.mark.skipif(
-    not getattr(module, "SKTIME_AVAILABLE", False),
-    reason="sktime optional dependency is not installed",
+from features.minirocket_embeddings import (
+    DependencyUnavailable,
+    SKTIME_AVAILABLE,
+    generate_minirocket_embeddings,
 )
-def test_generate_embeddings_runs_smoke() -> None:
-    panel = np.random.RandomState(1).randn(2, 5, 10)
-    embeddings = module.generate_minirocket_embeddings(panel, num_features=4, random_state=0)
+
+
+@pytest.mark.skipif(not SKTIME_AVAILABLE, reason="sktime not installed")
+def test_generate_minirocket_embeddings_smoke() -> None:
+    """MiniRocket produces deterministic feature dimensions when available."""
+
+    rng = np.random.default_rng(0)
+    panel = rng.standard_normal((2, 3, 20)).astype(np.float32)
+    embeddings = generate_minirocket_embeddings(panel, num_features=32, random_state=0)
 
     assert len(embeddings) == 2
-    assert all(len(vec) == 4 for vec in embeddings)
+    assert all(len(vec) == 32 for vec in embeddings)
+
+
+@pytest.mark.skipif(SKTIME_AVAILABLE, reason="sktime installed")
+def test_dependency_unavailable_when_sktime_missing() -> None:
+    """Without sktime, MiniRocket raises a controlled dependency error."""
+
+    panel = np.ones((1, 10), dtype=np.float32)
+
+    with pytest.raises(DependencyUnavailable):
+        generate_minirocket_embeddings(panel)
