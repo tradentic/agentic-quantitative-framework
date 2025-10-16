@@ -6,7 +6,7 @@ A portable Codespaces/devcontainer that readies a **Next.js + Supabase** environ
 
 * **Base image**: Ubuntu 24.04 with Docker‑in‑Docker
 * **Tooling**: Node **24** (Corepack/PNPM enabled), Supabase CLI, optional AI CLIs (see `scripts/`)
-* **Ports**: 3000 (Next), 54321/54322/54323/54324/54327 (Supabase stack)
+* **Ports**: 3000 (Next), 4200 (Prefect UI/API), 3920/4002/4390 (Prefect background services), 54321/54322/54323/54324/54327 (Supabase stack)
 
 ## Lifecycle hooks
 
@@ -20,11 +20,13 @@ A portable Codespaces/devcontainer that readies a **Next.js + Supabase** environ
   * Installs **Supabase CLI**
   * Installs **OpenAI Codex CLI** via **pnpm global** (no npm/brew)
   * *(Optional, if enabled in the script)* Installs **Anthropic Claude Code CLI** via **pnpm global**
+
 * `postStartCommand`: runs `.devcontainer/scripts/post-start.sh`
 
   * Starts Supabase (`supabase start`) if not already running
   * Runs `.devcontainer/scripts/sync-supabase-env.mjs` to generate **`.env.local`** from `supabase status`
   * Prefers Supabase **Publishable/Secret** keys; falls back to **Anon/Service Role**; **backfills both ways** so either style works
+  * Boots Prefect (`prefect server start --background --host 0.0.0.0 --port 4200`) and pins `PREFECT_API_URL` to the local server once healthy
 
 > For script internals and flags, see **[SCRIPTS.md](./SCRIPTS.md)**.
 
