@@ -28,9 +28,6 @@ pnpm install
 ```bash
 # Start the Supabase containers (Postgres, pgvector, storage, realtime)
 supabase start
-
-# Apply RPC helpers/triggers after the stack is running
-supabase db execute --file supabase/sql/signal_embedding_triggers.sql
 ```
 
 ### Resetting Local State
@@ -41,8 +38,8 @@ supabase db execute --file supabase/sql/signal_embedding_triggers.sql
 ### Pushing Schema Changes
 
 - `supabase db push --local` – Validates the migration bundle against your local containers. Useful before linking a remote project.
-- `supabase db push --linked` – Pushes the current migrations to the linked Supabase project. Append `--dry-run` to inspect SQL without executing.
-- For self-hosted targets provide `--db-url <postgres-connection-string>` instead of `--linked`.
+- `supabase db push --linked --dry-run` – Shows the SQL diff that would be applied to the linked Supabase project without executing anything.
+- `supabase db push --linked` – Applies the migrations to the linked project once you are confident in the diff. For self-hosted targets provide `--db-url <postgres-connection-string>` instead of `--linked`.
 
 ### Seeded Data
 

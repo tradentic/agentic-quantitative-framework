@@ -1,6 +1,6 @@
 -- Supabase automation for signal embedding workflows and Prefect orchestration hooks.
 
-create extension if not exists "vector";
+create extension if not exists vector;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -80,54 +80,34 @@ begin
 end;
 $$;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_trigger where tgname = 'signal_embeddings_set_updated_at'
-  ) then
-    create trigger signal_embeddings_set_updated_at
-      before update on public.signal_embeddings
-      for each row execute procedure public.set_updated_at();
-  end if;
+-- Trigger wiring with explicit drops to remain idempotent.
+drop trigger if exists signal_embeddings_set_updated_at on public.signal_embeddings;
+create trigger signal_embeddings_set_updated_at
+  before update on public.signal_embeddings
+  for each row execute function public.set_updated_at();
 
-  if not exists (
-    select 1 from pg_trigger where tgname = 'signal_embeddings_insert_trigger'
-  ) then
-    create trigger signal_embeddings_insert_trigger
-      after insert on public.signal_embeddings
-      for each row execute procedure public.handle_new_embedding();
-  end if;
+drop trigger if exists signal_embeddings_insert_trigger on public.signal_embeddings;
+create trigger signal_embeddings_insert_trigger
+  after insert on public.signal_embeddings
+  for each row execute function public.handle_new_embedding();
 
-  if not exists (
-    select 1 from pg_trigger where tgname = 'embedding_jobs_set_updated_at'
-  ) then
-    create trigger embedding_jobs_set_updated_at
-      before update on public.embedding_jobs
-      for each row execute procedure public.set_updated_at();
-  end if;
+drop trigger if exists embedding_jobs_set_updated_at on public.embedding_jobs;
+create trigger embedding_jobs_set_updated_at
+  before update on public.embedding_jobs
+  for each row execute function public.set_updated_at();
 
-  if not exists (
-    select 1 from pg_trigger where tgname = 'feature_registry_set_updated_at'
-  ) then
-    create trigger feature_registry_set_updated_at
-      before update on public.feature_registry
-      for each row execute procedure public.set_updated_at();
-  end if;
+drop trigger if exists feature_registry_set_updated_at on public.feature_registry;
+create trigger feature_registry_set_updated_at
+  before update on public.feature_registry
+  for each row execute function public.set_updated_at();
 
-  if not exists (
-    select 1 from pg_trigger where tgname = 'agent_state_set_updated_at'
-  ) then
-    create trigger agent_state_set_updated_at
-      before update on public.agent_state
-      for each row execute procedure public.set_updated_at();
-  end if;
+drop trigger if exists agent_state_set_updated_at on public.agent_state;
+create trigger agent_state_set_updated_at
+  before update on public.agent_state
+  for each row execute function public.set_updated_at();
 
-  if not exists (
-    select 1 from pg_trigger where tgname = 'backtest_requests_set_updated_at'
-  ) then
-    create trigger backtest_requests_set_updated_at
-      before update on public.backtest_requests
-      for each row execute procedure public.set_updated_at();
-  end if;
-end;
-$$;
+drop trigger if exists backtest_requests_set_updated_at on public.backtest_requests;
+create trigger backtest_requests_set_updated_at
+  before update on public.backtest_requests
+  for each row execute function public.set_updated_at();
+
