@@ -5,6 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import importlib
+import sys
+
 import numpy as np
 import pytest
 
@@ -12,7 +15,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-pytest.importorskip("sktime")
+
+def _reload_module():
+    return importlib.reload(importlib.import_module("features.minirocket_embeddings"))
+
+
+def test_missing_dependency_error(monkeypatch: pytest.MonkeyPatch):
+    module = _reload_module()
+
+    def fake_import():
+        raise ModuleNotFoundError("mock missing")
+
+    monkeypatch.setattr(module, "_import_sktime", fake_import)
+    with pytest.raises(ModuleNotFoundError) as exc:
+        module.generate_minirocket_embeddings(np.ones((1, 4)))
+    assert "sktime" in str(exc.value)
+
+
+sktime = pytest.importorskip("sktime", reason="sktime optional dependency required for MiniRocket tests")
 
 from features.minirocket_embeddings import generate_minirocket_embeddings
 

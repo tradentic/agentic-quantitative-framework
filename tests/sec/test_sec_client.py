@@ -27,6 +27,7 @@ SAMPLE_XML = b"""<?xml version='1.0'?>
   <reportingOwner>
     <reportingOwnerId>
       <rptOwnerName>John Doe</rptOwnerName>
+      <rptOwnerCik>0000554321</rptOwnerCik>
     </reportingOwnerId>
   </reportingOwner>
   <accessionNumber>0000123456-24-000001</accessionNumber>
@@ -104,7 +105,8 @@ def test_parse_form4_xml_extracts_transactions():
     parsed = sec_client.parse_form4_xml(SAMPLE_XML)
     assert parsed.symbol == "ACME"
     assert parsed.reporter == "John Doe"
-    assert parsed.cik == "0000123456"
+    assert parsed.issuer_cik == "0000123456"
+    assert parsed.reporter_cik == "0000554321"
     assert parsed.accession == "0000123456-24-000001"
     assert len(parsed.transactions) == 2
     first = parsed.transactions[0]

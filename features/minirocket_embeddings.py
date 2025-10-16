@@ -5,14 +5,6 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-try:
-    from sktime.transformations.panel.rocket import MiniRocketMultivariate
-    from sktime.utils.data_processing import from_3d_numpy_to_nested
-except ModuleNotFoundError as exc:  # pragma: no cover - import guard for optional dep
-    raise ModuleNotFoundError(
-        "sktime is required for MiniRocket embeddings. Install it with `pip install sktime`."
-    ) from exc
-
 
 ArrayLike = NDArray[np.float_]
 
@@ -76,6 +68,8 @@ def generate_minirocket_embeddings(
 
     clean_panel = _ensure_3d_panel(panel)
 
+    MiniRocketMultivariate, from_3d_numpy_to_nested = _import_sktime()
+
     transformer = MiniRocketMultivariate(
         num_kernels=num_features, random_state=random_state
     )
@@ -86,3 +80,13 @@ def generate_minirocket_embeddings(
 
 
 __all__ = ["generate_minirocket_embeddings"]
+def _import_sktime() -> tuple[object, object]:
+    try:
+        from sktime.transformations.panel.rocket import MiniRocketMultivariate
+        from sktime.utils.data_processing import from_3d_numpy_to_nested
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency missing
+        raise ModuleNotFoundError(
+            "MiniRocket embeddings require the optional dependency 'sktime'. "
+            "Install it with `pip install sktime`."
+        ) from exc
+    return MiniRocketMultivariate, from_3d_numpy_to_nested

@@ -15,8 +15,8 @@
   - Supabase credentials (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` or equivalents).
 
 ## Outputs
-- `edgar_filings`: single row per Form 4 filing with accession metadata, reporter, symbol, and XML URL.
-- `insider_transactions`: expanded transaction rows (date, code, shares, price) linked via accession number.
+- `edgar_filings`: single row per Form 4 filing with accession metadata, reporter details, XML URL, `filing_date`, and SHA-256 hashes (`xml_sha256`, `payload_sha256`).
+- `insider_transactions`: expanded transaction rows (date, code, shares, price, insider name/CIK) linked via accession number and symbol for idempotent upserts.
 - Prefect flow run results summarizing inserted filings and transactions.
 
 ## Configuration & Rate Limiting
@@ -40,6 +40,6 @@
 - Supabase upsert conflicts resolved on `accession_number` keys to avoid duplicates.
 
 ## Provenance
-- Each filing record retains the canonical EDGAR XML URL for audit trails.
-- Transactions inherit accession numbers to trace back to the original filing.
+- Each filing record stores the canonical XML URL plus `xml_sha256` and `payload_sha256` hashes so downstream agents can detect drift.
+- Transactions inherit accession numbers and share the filing's provenance hash, allowing merged auditing with `provenance_events`.
 - Prefect task/flow logs maintain execution metadata for reproducibility.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Iterable
@@ -32,16 +33,27 @@ def _daterange(start: date, end: date) -> Iterable[date]:
 
 
 def _build_filing_record(row: Form4IndexRow, parsed: ParsedForm4, xml_url: str) -> dict[str, object]:
-    return {
-        "accession_number": parsed.accession or row.accession_number,
-        "cik": row.cik,
+    accession = parsed.accession or row.accession_number
+    filing_date = row.date_filed
+    filed_at = filing_date.isoformat()
+    symbol = (parsed.symbol or "").strip().upper()
+    canonical = {
+        "accession_number": accession,
+        "cik": parsed.issuer_cik or row.cik,
         "form_type": row.form_type,
         "company_name": row.company_name,
-        "filed_at": datetime.combine(row.date_filed, datetime.min.time()).isoformat(),
-        "symbol": parsed.symbol,
-        "reporter": parsed.reporter,
+        "filing_date": filing_date.isoformat(),
+        "filed_at": filed_at,
+        "symbol": symbol or None,
+        "reporter": (parsed.reporter or "").strip() or None,
+        "reporter_cik": (parsed.reporter_cik or "").strip() or None,
         "xml_url": xml_url,
     }
+    payload_hash = hash_bytes(
+        json.dumps({k: v for k, v in canonical.items() if k != "filed_at"}, sort_keys=True).encode("utf-8")
+    )
+    canonical["payload_sha256"] = payload_hash
+    return canonical
 
 
 def _build_transaction_records(parsed: ParsedForm4) -> list[dict[str, object]]:
@@ -55,7 +67,8 @@ def _build_transaction_records(parsed: ParsedForm4) -> list[dict[str, object]]:
                 "shares": txn.shares,
                 "price": txn.price,
                 "symbol": parsed.symbol,
-                "reporter": parsed.reporter,
+                "insider_name": parsed.reporter,
+                "reporter_cik": parsed.reporter_cik or None,
             }
         )
     return payload
@@ -126,25 +139,40 @@ def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]
                         symbol=parsed.symbol,
                         transactions=parsed.transactions,
                         reporter=parsed.reporter,
-                        cik=parsed.cik or row.cik,
+                        issuer_cik=parsed.issuer_cik or row.cik,
+                        reporter_cik=parsed.reporter_cik,
                         accession=row.accession_number,
                     )
                 xml_hash = hash_bytes(xml_bytes)
                 filing_record = _build_filing_record(row, parsed, xml_url)
+                filing_record["xml_sha256"] = xml_hash
+                filing_record["provenance"] = {
+                    "parser_version": FORM4_PARSER_VERSION,
+                    "source_url": xml_url,
+                    "fetched_at": fetched_at,
+                }
                 filings_payload.append(filing_record)
                 filing_meta = {
                     "source_url": xml_url,
                     "xml_sha256": xml_hash,
                     "parser_version": FORM4_PARSER_VERSION,
                     "fetched_at": fetched_at,
+                    "payload_sha256": filing_record.get("payload_sha256"),
                 }
-                batch_provenance.append(("edgar_filings", filing_record["accession_number"], filing_meta))
+                batch_provenance.append(
+                    (
+                        "edgar_filings",
+                        {"accession_number": filing_record["accession_number"]},
+                        filing_meta,
+                    )
+                )
                 for txn_record in _build_transaction_records(parsed):
                     transactions_payload.append(txn_record)
                     txn_key = {
                         "accession_number": txn_record["accession_number"],
                         "transaction_date": txn_record["transaction_date"],
                         "transaction_code": txn_record["transaction_code"],
+                        "symbol": txn_record["symbol"],
                     }
                     batch_provenance.append(("insider_transactions", txn_key, filing_meta))
             batch_filings = len(filings_payload)
@@ -156,7 +184,7 @@ def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]
                 total_transactions += _persist_records(
                     "insider_transactions",
                     transactions_payload,
-                    conflict="accession_number,transaction_date,transaction_code",
+                    conflict="accession_number,transaction_date,transaction_code,symbol",
                 )
                 for table_name, pk, meta in batch_provenance:
                     record_provenance(table_name, pk, meta)
