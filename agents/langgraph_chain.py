@@ -34,6 +34,7 @@ TOOL_REGISTRY: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 }
 
 SHORT_TERM_WINDOW = 5
+CHECKPOINT_PATH = Path(".cache/langgraph_state.sqlite")
 
 
 @dataclass
@@ -49,6 +50,7 @@ class AgentState:
     metrics: dict[str, Any] = field(default_factory=dict)
     long_term_state: dict[str, Any] = field(default_factory=dict)
     long_term_dirty: bool = False
+    thread_id: str | None = None
 
 
 def _load_langgraph_runtime() -> dict[str, Any]:
@@ -75,6 +77,34 @@ def _load_langchain_support() -> dict[str, Any]:
     return support
 
 
+def _load_checkpointer() -> Any | None:
+    """Attempt to load a durable LangGraph checkpointer."""
+
+    try:
+        if util.find_spec("langgraph.checkpoint.sqlite") is not None:
+            module = import_module("langgraph.checkpoint.sqlite")
+            saver_cls = getattr(module, "SqliteSaver", None)
+            if saver_cls is not None:
+                CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+                if hasattr(saver_cls, "from_conn_string"):
+                    return saver_cls.from_conn_string(f"sqlite:///{CHECKPOINT_PATH}")
+                return saver_cls(str(CHECKPOINT_PATH))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to initialize SqliteSaver checkpointing: %s", exc, exc_info=True)
+
+    try:
+        if util.find_spec("langgraph.checkpoint.memory") is not None:
+            module = import_module("langgraph.checkpoint.memory")
+            saver_cls = getattr(module, "MemorySaver", None)
+            if saver_cls is not None:
+                return saver_cls()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("MemorySaver checkpointing unavailable: %s", exc, exc_info=True)
+
+    logger.debug("LangGraph checkpointing unavailable; proceeding without a saver.")
+    return None
+
+
 def _detect_intent(request: str) -> str | None:
     lowered = request.lower()
     if any(keyword in lowered for keyword in ("feature", "ts2vec", "encoder")):
@@ -91,7 +121,9 @@ def _detect_intent(request: str) -> str | None:
 def _hydrate_long_term_state(state: AgentState) -> None:
     if state.long_term_state:
         return
-    agent_id = state.task_context.get("agent_id")
+    if not state.thread_id:
+        state.thread_id = state.task_context.get("thread_id") or state.task_context.get("agent_id")
+    agent_id = state.task_context.get("agent_id") or state.thread_id
     if not agent_id:
         return
     try:
@@ -191,14 +223,18 @@ def _collect_candidate_paths(result: dict[str, Any], guardrail_paths: Sequence[s
 def _run_static_checks(paths: Sequence[str]) -> None:
     if not paths:
         return
-    for command in ("ruff", "mypy"):
+    commands = {
+        "ruff": ["ruff", "check"],
+        "mypy": ["mypy"],
+    }
+    for name, base_command in commands.items():
         try:
-            subprocess.run([command, *paths], check=True, capture_output=True, text=True)
+            subprocess.run([*base_command, *paths], check=True, capture_output=True, text=True)
         except FileNotFoundError:
-            logger.warning("%s is not installed; skipping guardrail check.", command)
+            logger.warning("%s is not installed; skipping guardrail check.", name)
         except subprocess.CalledProcessError as exc:
-            logger.error("%s failed: %s", command, exc.stderr)
-            raise RuntimeError(f"Guardrail validation failed during {command}.") from exc
+            logger.error("%s failed: %s", name, exc.stderr)
+            raise RuntimeError(f"Guardrail validation failed during {name}.") from exc
 
 
 def _guardrail_node(state: AgentState) -> AgentState:
@@ -215,7 +251,7 @@ def _guardrail_node(state: AgentState) -> AgentState:
 def _persist_long_term_state(state: AgentState) -> None:
     if not state.long_term_dirty:
         return
-    agent_id = state.task_context.get("agent_id")
+    agent_id = state.task_context.get("agent_id") or state.thread_id
     if not agent_id:
         return
     try:
@@ -254,6 +290,7 @@ def _route_from_reflection(state: AgentState) -> str:
 def build_langgraph_chain() -> Any:
     runtime = _load_langgraph_runtime()
     support = _load_langchain_support()
+    checkpointer = _load_checkpointer()
 
     state_graph = runtime["StateGraph"](AgentState)
     state_graph.add_node("plan", lambda state: _plan_node(state, support))
@@ -273,7 +310,10 @@ def build_langgraph_chain() -> Any:
         _route_from_reflection,
         {"END": runtime["END"], "plan": "plan"},
     )
-    return state_graph.compile()
+    compile_kwargs: dict[str, Any] = {}
+    if checkpointer is not None:
+        compile_kwargs["checkpointer"] = checkpointer
+    return state_graph.compile(**compile_kwargs)
 
 
 __all__ = ["AgentState", "build_langgraph_chain"]

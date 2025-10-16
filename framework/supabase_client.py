@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import lru_cache
 from importlib import import_module, util
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, validator
@@ -198,7 +198,8 @@ def record_feature(
     payload = entry.as_dict() if isinstance(entry, FeatureRegistryEntry) else entry
     client = get_supabase_client()
     response = client.table("feature_registry").upsert(payload).execute()
-    return getattr(response, "data", payload)
+    result = getattr(response, "data", payload)
+    return cast(list[dict[str, Any]] | dict[str, Any], result)
 
 
 def store_artifact_json(path: str, content: dict[str, Any], *, bucket: str | None = None) -> str:

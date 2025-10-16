@@ -1,4 +1,4 @@
-prefect-version: "2.14.0"
+prefect-version: "3.0.0"
 
 deployments:
   - name: embedding-refresh-dev

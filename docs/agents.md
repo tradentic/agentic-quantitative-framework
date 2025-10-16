@@ -8,14 +8,16 @@ description: How LangGraph memory, guardrails, and Supabase-backed tools coordin
 
 The primary agent entry point is `agents/langgraph_chain.py`, which adheres to the guardrails and role expectations defined in
 `AGENTS.md`. The chain wraps a LangGraph `StateGraph` with explicit short-term and long-term memory so that tool outcomes can be
-replayed and persisted to Supabase.
+replayed and persisted to Supabase. Durable checkpoints are written to `.cache/langgraph_state.sqlite` via LangGraph's
+`SqliteSaver`, keeping per-thread context aligned with the Supabase `agent_state` table.
 
 ### State & Memory
 
 - **Short-term context** – The last five tool calls (action, timestamp, result) are retained in `AgentState.short_term_memory` so
   the planner can ground subsequent tool calls without repeated lookups.
 - **Long-term memory** – Each agent run looks up state from the Supabase `agent_state` table via `framework.supabase_client` and
-  persists updated history and metrics after successful tool execution. This ensures context is shared across invocations.
+  persists updated history and metrics after successful tool execution. This ensures context is shared across invocations and
+  stays synchronized with the checkpointer.
 - **Metrics tracking** – Tool return payloads populate `AgentState.metrics` and the Supabase record so downstream dashboards have
   ready access to the most recent Sharpe, t-stat, and pruning outcomes.
 

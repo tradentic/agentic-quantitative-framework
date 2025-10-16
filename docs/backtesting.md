@@ -7,13 +7,9 @@ description: How Prefect flows, Supabase storage, and LangGraph agents coordinat
 ## Backtest Lifecycle
 
 1. **Payload construction** – Use cases assemble a payload describing the asset universe, hyperparameters, and evaluation window.
-2. **Agent invocation** – `run_backtest()` is called via the LangGraph chain or Prefect `scheduled-backtest-runner` flow. The tool
-   executes `backtest/engine.py` locally and computes Sharpe, drawdown, and annualized return metrics.
-3. **Artifact persistence** – Summaries are uploaded to Supabase storage (`backtests/<strategy>/<timestamp>/summary.json`) and
-   plots (equity curves) are pushed alongside them. Each run inserts a row into the `backtest_results` table via
-   `framework.supabase_client.insert_backtest_result`.
-4. **Supabase visibility** – Requests originate from the `backtest_requests` table or from real-time triggers. Prefect updates the
-   table when jobs finish so dashboards can reflect the latest status.
+2. **Agent invocation** – `run_backtest()` is called via the LangGraph chain or Prefect `scheduled-backtest-runner` flow. The tool executes `backtest/engine.py` locally and computes Sharpe, drawdown, and annualized return metrics.
+3. **Artifact persistence** – Summaries are uploaded to Supabase Storage (`backtests/<strategy>/<timestamp>/summary.json`) and plots (equity curves) are pushed alongside them. Each run inserts a row into the `backtest_results` table via `framework.supabase_client.insert_backtest_result`.
+4. **Supabase visibility** – Requests originate from the `backtest_requests` table or from real-time triggers. Prefect updates the table when jobs finish so dashboards can reflect the latest status.
 
 ## Designing Backtests
 
@@ -26,11 +22,9 @@ description: How Prefect flows, Supabase storage, and LangGraph agents coordinat
 The Prefect deployment `scheduled-backtest-runner` polls `backtest_requests` for new work. Common triggers include:
 
 - **Rolling evaluation** – Nightly replays of the last N days to monitor drift.
-- **Trigger-based runs** – Launch a backtest when new embeddings arrive (`rpc_refresh_embeddings`) or when live metrics degrade.
+- **Trigger-based runs** – Launch a backtest when new embeddings arrive (`rpc_queue_embedding_job`) or when live metrics degrade.
 - **Comparative studies** – Running multiple parameter grids and storing results under a shared experiment ID in Supabase.
 
 ## Reading Results
 
-The backtest tool returns a structured dictionary with metric summaries and Supabase storage paths. Agents, notebooks, or Prefect
-flows can follow up by querying `backtest_results` for the `strategy_id` and timestamp or by downloading artifacts from storage to
-re-plot curves.
+The backtest tool returns a structured dictionary with metric summaries and Supabase storage paths. Agents, notebooks, or Prefect flows can follow up by querying `backtest_results` for the `strategy_id` and timestamp or by downloading artifacts from storage to re-plot curves.

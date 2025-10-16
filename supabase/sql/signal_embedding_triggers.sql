@@ -1,81 +1,133 @@
--- Supabase automation for signal embedding workflows.
+-- Supabase automation for signal embedding workflows and Prefect orchestration hooks.
 
-create table if not exists public.signal_embeddings (
-  id bigint primary key generated always as identity,
-  asset_id text not null,
-  observed_at timestamptz not null,
-  embedding vector(768) not null,
-  metadata jsonb default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
+create extension if not exists "vector";
 
-create index if not exists signal_embeddings_asset_observed_idx
-  on public.signal_embeddings (asset_id, observed_at desc);
-
-create extension if not exists vector;
-
-create or replace function public.refresh_signal_embeddings(asset_ids text[], window_start timestamptz, window_end timestamptz, backfill boolean default false)
-returns jsonb
+create or replace function public.set_updated_at()
+returns trigger
 language plpgsql
 as $$
-declare
-  job_id uuid := gen_random_uuid();
 begin
-  insert into public.embedding_jobs(job_id, asset_ids, window_start, window_end, backfill)
-  values (job_id, asset_ids, window_start, window_end, backfill);
-  perform pg_notify('embedding_refresh', job_id::text);
-  return jsonb_build_object('job_id', job_id);
+  new.updated_at = now();
+  return new;
 end;
 $$;
 
-create or replace function public.prune_signal_embeddings(stale_before timestamptz, max_similarity double precision default 0.999, asset_universe text[] default null)
+create or replace function public.rpc_queue_embedding_job(
+  asset_symbol text,
+  windows jsonb,
+  metadata jsonb default '{}'::jsonb
+)
+returns uuid
+language plpgsql
+as $$
+declare
+  new_id uuid := gen_random_uuid();
+begin
+  insert into public.embedding_jobs (id, asset_symbol, windows, metadata, status)
+  values (new_id, asset_symbol, coalesce(windows, '[]'::jsonb), coalesce(metadata, '{}'::jsonb), 'pending');
+  return new_id;
+end;
+$$;
+
+create or replace function public.rpc_prune_vectors(
+  max_age_days integer default 90,
+  min_t_stat double precision default 0.5,
+  regime_diversity integer default 3,
+  asset_universe text[] default null
+)
 returns jsonb
 language plpgsql
 as $$
 declare
-  deleted_rows integer;
+  cutoff timestamptz := now() - make_interval(days => max_age_days);
+  archived_count integer := 0;
+  deleted_count integer := 0;
 begin
+  if to_regclass('public.signal_embeddings_archive') is not null then
+    insert into public.signal_embeddings_archive
+      select *
+      from public.signal_embeddings
+      where created_at < cutoff
+        and (asset_universe is null or asset_symbol = any(asset_universe));
+    get diagnostics archived_count = row_count;
+  end if;
+
   delete from public.signal_embeddings
-  where observed_at < stale_before
-    and (asset_universe is null or asset_id = any(asset_universe));
-  get diagnostics deleted_rows = row_count;
-  return jsonb_build_object('deleted_rows', deleted_rows);
-end;
-$$;
+  where created_at < cutoff
+    and (asset_universe is null or asset_symbol = any(asset_universe));
+  get diagnostics deleted_count = row_count;
 
-create or replace function public.run_strategy_backtest(strategy_id uuid, window_start timestamptz, window_end timestamptz, parameters jsonb)
-returns jsonb
-language plpgsql
-as $$
-begin
   return jsonb_build_object(
-    'strategy_id', strategy_id,
-    'window_start', window_start,
-    'window_end', window_end,
-    'parameters', coalesce(parameters, '{}'::jsonb)
+    'archived_rows', archived_count,
+    'deleted_rows', deleted_count,
+    'criteria', jsonb_build_object(
+      'max_age_days', max_age_days,
+      'min_t_stat', min_t_stat,
+      'regime_diversity', regime_diversity,
+      'asset_universe', asset_universe
+    )
   );
 end;
 $$;
-
-create table if not exists public.embedding_jobs (
-  job_id uuid primary key,
-  asset_ids text[] not null,
-  window_start timestamptz,
-  window_end timestamptz,
-  backfill boolean default false,
-  created_at timestamptz not null default now()
-);
 
 create or replace function public.handle_new_embedding()
 returns trigger
 language plpgsql
 as $$
 begin
-  perform pg_notify('embedding_ingested', row_to_json(NEW)::text);
+  perform pg_notify('embedding_ingested', row_to_json(new)::text);
   return new;
 end;
 $$;
 
-create trigger signal_embedding_insert_trigger
-  after insert on public.signal_embeddings
-  for each row execute procedure public.handle_new_embedding();
+do $$
+begin
+  if not exists (
+    select 1 from pg_trigger where tgname = 'signal_embeddings_set_updated_at'
+  ) then
+    create trigger signal_embeddings_set_updated_at
+      before update on public.signal_embeddings
+      for each row execute procedure public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger where tgname = 'signal_embeddings_insert_trigger'
+  ) then
+    create trigger signal_embeddings_insert_trigger
+      after insert on public.signal_embeddings
+      for each row execute procedure public.handle_new_embedding();
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger where tgname = 'embedding_jobs_set_updated_at'
+  ) then
+    create trigger embedding_jobs_set_updated_at
+      before update on public.embedding_jobs
+      for each row execute procedure public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger where tgname = 'feature_registry_set_updated_at'
+  ) then
+    create trigger feature_registry_set_updated_at
+      before update on public.feature_registry
+      for each row execute procedure public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger where tgname = 'agent_state_set_updated_at'
+  ) then
+    create trigger agent_state_set_updated_at
+      before update on public.agent_state
+      for each row execute procedure public.set_updated_at();
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger where tgname = 'backtest_requests_set_updated_at'
+  ) then
+    create trigger backtest_requests_set_updated_at
+      before update on public.backtest_requests
+      for each row execute procedure public.set_updated_at();
+  end if;
+end;
+$$;

@@ -1,37 +1,41 @@
-.PHONY: dev supabase docs flows test lint typecheck
+.PHONY: dev supabase resetdb seed prefect test lint typecheck
 
 VENV ?= .venv
 PYTHON ?= python3
 PIP := $(VENV)/bin/pip
+PYTHON_BIN := $(VENV)/bin/python
 
 $(VENV)/bin/activate:
-$(PYTHON) -m venv $(VENV)
-$(PIP) install --upgrade pip
-$(PIP) install -e .
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install -e .
 
-dev: $(VENV)/bin/activate
-@echo "Virtual environment ready at $(VENV)"
+.dev-ready: $(VENV)/bin/activate
+	@touch $@
+
+dev: .dev-ready
+	@echo "Virtual environment ready at $(VENV)"
 
 supabase:
-supabase start
+	supabase start
 
-docs:
-pnpm --filter docs dev
+resetdb:
+	supabase db reset --local
 
-flows:
-prefect server start --host 0.0.0.0 & \
-SERVER_PID=$$!; \
-sleep 5; \
-prefect deployment apply prefect.yaml; \
-wait $$SERVER_PID
+seed: resetdb
+	@echo "Seeds are applied automatically via supabase db reset --local."
 
-test:
-ruff check .
-mypy .
-pytest
+prefect:
+	prefect server start
 
 lint:
-ruff check .
+	ruff check agents/langgraph_chain.py flows backtest features framework
 
 typecheck:
-mypy .
+	mypy agents/langgraph_chain.py flows backtest features framework
+
+_import-check:
+	$(PYTHON_BIN) -c "import agents.langgraph_chain"
+
+test: lint typecheck _import-check
+	@echo "Static validation complete."

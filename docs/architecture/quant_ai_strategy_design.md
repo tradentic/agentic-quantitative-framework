@@ -10,6 +10,7 @@ description: Supabase-first reference architecture for the Agentic Quantitative 
 The Agentic Quantitative Framework orchestrates GPT-native research agents, Supabase services, and LangGraph workflows to discover and maintain predictive financial signals. The design emphasizes:
 
 - **Supabase-unified storage** for relational data, pgvector embeddings, file artifacts, and realtime triggers.
+- **Supabase-unified storage** for relational data, pgvector embeddings, archive tables, file artifacts, and realtime triggers.
 - **LangGraph state machines** that coordinate long-running GPT interactions with deterministic tool execution.
 - **Use case modularity**, allowing each strategy under `use_cases/<name>/` to define its own labeling, features, and evaluation loops while sharing the same infrastructure.
 
@@ -27,7 +28,7 @@ The Agentic Quantitative Framework orchestrates GPT-native research agents, Supa
 ### 2. Data & Feature Fabric
 
 1. **Ingestion & labeling** – Python jobs land raw market data, regulatory events, or fundamentals in Supabase tables. Use cases attach labels using RPC helpers.
-2. **Feature generation** – Feature scripts (for example `features/generate_ts2vec_embeddings.py`) produce embeddings and persist them to the `signal_embeddings` table via the Supabase REST API.
+2. **Feature generation** – Feature scripts (for example `features/generate_ts2vec_embeddings.py`) produce embeddings and persist them to the `signal_embeddings` table (with `signal_embeddings_archive` for roll-offs) via the Supabase REST API.
 3. **Versioned metadata** – Each embedding row stores metadata (`source`, `regime`, `window`) enabling LangGraph agents to reason over provenance and drift.
 4. **Automation hooks** – SQL in `supabase/sql/signal_embedding_triggers.sql` defines triggers and RPCs that notify agents whenever embeddings change.
 

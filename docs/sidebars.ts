@@ -25,6 +25,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Use Cases',
+      collapsible: true,
+      collapsed: true,
+      items: ['use-cases-overview'],
+    },
+    {
+      type: 'category',
       label: 'Specifications',
       collapsible: true,
       collapsed: true,
