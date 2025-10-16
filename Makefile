@@ -5,39 +5,39 @@ PYTHON ?= python3
 PIP := $(VENV)/bin/pip
 
 $(VENV)/bin/activate:
-$(PYTHON) -m venv $(VENV)
-$(PIP) install --upgrade pip
-$(PIP) install -e .
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install -e .
 
 dev: $(VENV)/bin/activate
-@echo "Virtual environment ready at $(VENV)"
+	@echo "Virtual environment ready at $(VENV)"
 
 supabase:
-supabase start
+	supabase start
 
 resetdb:
-supabase db reset --local
+	supabase db reset --local
 
 pushdb:
-supabase db push --local
+	supabase db push --local
 
 prefect:
-prefect server start --host 127.0.0.1 --port 4200
+	prefect server start --host 127.0.0.1 --port 4200
 
 lint: $(VENV)/bin/activate
-$(VENV)/bin/ruff check .
-$(VENV)/bin/mypy .
+	$(VENV)/bin/ruff check .
+	$(VENV)/bin/mypy .
 
 test: lint
-$(VENV)/bin/pytest
+	$(VENV)/bin/pytest
 
 docs:
-pnpm --filter docs dev
+	pnpm --filter docs dev
 
 flows:
-prefect deployment apply prefect.yaml
+	prefect deployment apply prefect.yaml
 
 setup-supabase-env:
-cp .env.example .env
-node .devcontainer/scripts/sync-supabase-env.mjs
-@echo "Update .env with your Supabase keys and project reference."
+	cp .env.example .env
+	node .devcontainer/scripts/sync-supabase-env.mjs
+	@echo "Update .env with your Supabase keys and project reference."
