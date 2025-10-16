@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import types
 from typing import Any
 import logging
 
@@ -19,6 +20,7 @@ from flows.embeddings_and_fingerprints import (
     concatenate_feature_blocks,
     execute_embedder,
     fingerprint_vectorization,
+    upsert_fingerprint_rows,
     prepare_numeric_payload,
 )
 
@@ -150,6 +152,54 @@ def test_build_fingerprint_records() -> None:
     assert records[0]["meta"]["source"] == "unit"
     assert records[0]["window_start"] == "2024-01-01"
     assert "fingerprint_sha256" in records[0]["provenance"]
+
+
+def test_upsert_fingerprint_rows_uses_conflict_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class _DummyTable:
+        def upsert(self, rows, on_conflict=None):  # type: ignore[no-untyped-def]
+            captured["rows"] = list(rows)
+            captured["on_conflict"] = on_conflict
+            return self
+
+        def execute(self):  # type: ignore[no-untyped-def]
+            return types.SimpleNamespace(data=[{"id": "existing"}])
+
+    class _DummyClient:
+        def table(self, name: str) -> _DummyTable:
+            captured["table"] = name
+            return _DummyTable()
+
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints.get_supabase_client",
+        lambda: _DummyClient(),
+    )
+
+    rows = [
+        {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "signal_name": "demo",
+            "version": "v1",
+            "asset_symbol": "ACME",
+            "window_start": "2024-01-01",
+            "window_end": "2024-01-02",
+            "fingerprint": [0.1, 0.2, 0.3],
+            "provenance": {"source_url": ["unit"], "feature_version": "demo"},
+            "meta": {},
+            "table": "signal_fingerprints",
+        }
+    ]
+
+    result = upsert_fingerprint_rows(rows)
+
+    assert result == [{"id": "existing"}]
+    assert captured["table"] == "signal_fingerprints"
+    assert captured["on_conflict"] == "asset_symbol,window_start,window_end,version"
+    assert "id" not in captured["rows"][0]
+    assert "table" not in captured["rows"][0]
 
 
 def test_fingerprint_vectorization_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
