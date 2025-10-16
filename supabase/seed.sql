@@ -42,7 +42,11 @@ values (
   '{"y_next":0}',
   '{"notes":"seed"}'
 )
-on conflict do nothing;
+on conflict (asset_symbol, time_range) do update set
+  embedding = excluded.embedding,
+  regime_tag = excluded.regime_tag,
+  label = excluded.label,
+  meta = excluded.meta;
 
 -- Edgar Form 4 filing demo row
 insert into public.edgar_filings (
