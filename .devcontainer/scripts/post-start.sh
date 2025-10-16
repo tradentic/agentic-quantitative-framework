@@ -31,59 +31,82 @@ else
 fi
 
 prefect_ready=false
-prefect_api_default="http://127.0.0.1:4200/api"
+prefect_cli_available=false
+prefect_api_host_port="${PREFECT_API_HOST_PORT:-4200}"
+prefect_api_default="http://127.0.0.1:${prefect_api_host_port}/api"
 prefect_base_url="${prefect_api_default%/api}"
 prefect_health_url="${prefect_api_default%/}/health"
 prefect_ui_api_path="/api"
-prefect_pool_name="local-agent"
-prefect_worker_type="process"
+prefect_pool_name="${PREFECT_WORK_POOL_NAME:-local-agent}"
+prefect_worker_type="${PREFECT_WORKER_TYPE:-docker}"
+prefect_docker_network="${PREFECT_DOCKER_NETWORK:-prefect-dev}"
+prefect_server_container="${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}" 
+prefect_worker_container="${PREFECT_WORKER_CONTAINER_NAME:-prefect-worker-${prefect_pool_name}}"
+prefect_docker_image="${PREFECT_DOCKER_IMAGE:-prefecthq/prefect:3-latest}"
 
 if command -v prefect >/dev/null 2>&1; then
-  echo "[post-start] Checking Prefect server health..."
-  if curl -fsS --max-time 2 "${prefect_health_url}" >/dev/null 2>&1; then
-    echo "[post-start] Prefect server already running."
-    prefect_ready=true
+  prefect_cli_available=true
+else
+  echo "[post-start] Prefect CLI not found on PATH; skipping Prefect configuration." >&2
+fi
+
+docker_available=false
+if command -v docker >/dev/null 2>&1; then
+  if docker info >/dev/null 2>&1; then
+    docker_available=true
   else
-    echo "[post-start] Prefect server not running; starting in background..."
-    prefect_log="$(mktemp -t prefect-start-XXXX.log)"
-    if \
-      PREFECT_API_URL="${prefect_api_default}" \
-      PREFECT_UI_API_URL="${prefect_ui_api_path}" \
-      PREFECT_SERVER_API_HOST="0.0.0.0" \
-      PREFECT_SERVER_API_PORT="4200" \
-      PREFECT_SERVER_ALLOW_EPHEMERAL_MODE="false" \
-      prefect server start --background --host 0.0.0.0 --port 4200 \
-        >"${prefect_log}" 2>&1; then
-      for attempt in {1..20}; do
-        if curl -fsS --max-time 2 "${prefect_health_url}" >/dev/null 2>&1; then
-          prefect_ready=true
-          break
-        fi
-        sleep 3
-      done
-      if [[ "${prefect_ready}" == "true" ]]; then
-        echo "[post-start] Prefect server is ready on ${prefect_base_url}."
-        PREFECT_API_URL="${prefect_api_default}" prefect config set "PREFECT_API_URL=${prefect_api_default}" >/dev/null 2>&1 || true
-        PREFECT_API_URL="${prefect_api_default}" prefect config set "PREFECT_UI_API_URL=${prefect_ui_api_path}" >/dev/null 2>&1 || true
-        PREFECT_API_URL="${prefect_api_default}" prefect config set "PREFECT_SERVER_ALLOW_EPHEMERAL_MODE=false" >/dev/null 2>&1 || true
-      else
-        echo "[post-start] Prefect server did not become healthy; logs:" >&2
-        cat "${prefect_log}" >&2 || true
-      fi
-    else
-      echo "[post-start] Failed to launch Prefect server; logs:" >&2
-      cat "${prefect_log}" >&2 || true
-    fi
-    rm -f "${prefect_log}"
+    echo "[post-start] Docker is installed but not available (docker info failed)." >&2
   fi
 else
-  echo "[post-start] Prefect CLI not found on PATH; skipping Prefect startup." >&2
+  echo "[post-start] Docker CLI not found; cannot manage Prefect server/worker containers." >&2
+fi
+
+if [[ "${docker_available}" == "true" && "${prefect_cli_available}" == "true" ]]; then
+  if ! docker network inspect "${prefect_docker_network}" >/dev/null 2>&1; then
+    echo "[post-start] Creating Docker network '${prefect_docker_network}' for Prefect services..."
+    docker network create "${prefect_docker_network}" >/dev/null 2>&1 || echo "[post-start] Failed to create network '${prefect_docker_network}'." >&2
+  fi
+
+  if docker ps --filter "name=^/${prefect_server_container}$" --format '{{.Names}}' | grep -Fxq "${prefect_server_container}"; then
+    echo "[post-start] Prefect server container '${prefect_server_container}' already running."
+  else
+    echo "[post-start] Starting Prefect server container '${prefect_server_container}'..."
+    docker run \
+      --detach \
+      --rm \
+      --name "${prefect_server_container}" \
+      --network "${prefect_docker_network}" \
+      --publish "${prefect_api_host_port}:4200" \
+      "${prefect_docker_image}" \
+      prefect server start --host 0.0.0.0 --port 4200 >/dev/null 2>&1 || {
+        echo "[post-start] Failed to launch Prefect server container." >&2
+      }
+  fi
+
+  for attempt in {1..40}; do
+    if curl -fsS --max-time 2 "${prefect_health_url}" >/dev/null 2>&1; then
+      prefect_ready=true
+      break
+    fi
+    sleep 3
+  done
+
+  if [[ "${prefect_ready}" == "true" ]]; then
+    echo "[post-start] Prefect server is ready on ${prefect_base_url}."
+  else
+    echo "[post-start] Prefect server container did not become healthy; logs:" >&2
+    docker logs "${prefect_server_container}" 2>&1 || true
+  fi
 fi
 
 # Once Prefect is healthy, ensure deployments and workers are ready
-if [[ "${prefect_ready}" == "true" ]]; then
+if [[ "${prefect_ready}" == "true" && "${prefect_cli_available}" == "true" ]]; then
   export PREFECT_API_URL="${prefect_api_default}"
   export PREFECT_UI_API_URL="${prefect_ui_api_path}"
+
+  PREFECT_API_URL="${prefect_api_default}" prefect config set "PREFECT_API_URL=${prefect_api_default}" >/dev/null 2>&1 || true
+  PREFECT_API_URL="${prefect_api_default}" prefect config set "PREFECT_UI_API_URL=${prefect_ui_api_path}" >/dev/null 2>&1 || true
+  PREFECT_API_URL="${prefect_api_default}" prefect config set "PREFECT_SERVER_ALLOW_EPHEMERAL_MODE=false" >/dev/null 2>&1 || true
 
   echo "[post-start] Ensuring Prefect work pool '${prefect_pool_name}' exists (${prefect_worker_type})."
   if ! prefect work-pool inspect "${prefect_pool_name}" >/dev/null 2>&1; then
@@ -101,18 +124,27 @@ if [[ "${prefect_ready}" == "true" ]]; then
     echo "[post-start] Failed to deploy Prefect flows." >&2
   fi
 
-  if command -v pgrep >/dev/null 2>&1 && pgrep -f "prefect worker start --pool ${prefect_pool_name}" >/dev/null 2>&1; then
-    echo "[post-start] Prefect worker for pool '${prefect_pool_name}' already running."
+  if [[ "${docker_available}" == "true" ]]; then
+    if docker ps --filter "name=^/${prefect_worker_container}$" --format '{{.Names}}' | grep -Fxq "${prefect_worker_container}"; then
+      echo "[post-start] Prefect worker container '${prefect_worker_container}' already running."
+    else
+      echo "[post-start] Launching Prefect worker container '${prefect_worker_container}'."
+      docker run \
+        --detach \
+        --rm \
+        --name "${prefect_worker_container}" \
+        --network "${prefect_docker_network}" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -e PREFECT_API_URL="http://${prefect_server_container}:4200/api" \
+        -e PREFECT_UI_API_URL="${prefect_ui_api_path}" \
+        "${prefect_docker_image}" \
+        prefect worker start --pool "${prefect_pool_name}" --type "${prefect_worker_type}" >/dev/null 2>&1 || {
+          echo "[post-start] Failed to launch Prefect worker container." >&2
+          docker logs "${prefect_worker_container}" 2>&1 || true
+        }
+    fi
   else
-    worker_log_dir="${REPO_ROOT}/.prefect/logs"
-    mkdir -p "${worker_log_dir}"
-    worker_log_file="${worker_log_dir}/worker-${prefect_pool_name}.log"
-    echo "[post-start] Launching Prefect worker for pool '${prefect_pool_name}' (logs: ${worker_log_file})."
-    nohup env \
-      PREFECT_API_URL="${prefect_api_default}" \
-      PREFECT_UI_API_URL="${prefect_ui_api_path}" \
-      prefect worker start --pool "${prefect_pool_name}" --type "${prefect_worker_type}" \
-        >>"${worker_log_file}" 2>&1 &
+    echo "[post-start] Docker unavailable; skipping Prefect worker container startup." >&2
   fi
 fi
 
