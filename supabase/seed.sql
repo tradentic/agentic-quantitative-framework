@@ -10,10 +10,11 @@ on conflict (name, version) do update set
   path = excluded.path,
   meta = excluded.meta;
 
--- Backtest results demo row
-insert into public.backtest_results (config, metrics, artifacts)
+insert into public.backtest_results (strategy_id, run_at, config, metrics, artifacts)
 values (
-  '{"strategy":"demo","window":"2024-01-01/2024-01-15"}',
+  'demo_strategy',
+  '2024-01-15T00:00:00+00',
+  '{"strategy":"demo","strategy_id":"demo_strategy","window":"2024-01-01/2024-01-15"}',
   '{"sharpe":0.00,"max_drawdown":0.00,"n_trades":0}',
   '{"plots":["storage://backtests/demo_equity_curve.png"]}'
 )
