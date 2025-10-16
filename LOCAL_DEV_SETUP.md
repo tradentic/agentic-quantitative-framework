@@ -105,6 +105,8 @@ make resetdb    # supabase db reset --local
 make pushdb     # supabase db push --local
 make prefect    # prefect server start --host 127.0.0.1 --port 4200
 make lint       # ruff check + mypy
+python scripts/audit_vector_dims.py       # validate embedding dimensions
+pytest tests/flows/test_entrypoints.py    # ensure Prefect deployments import
 ```
 
 Refer to `docs/architecture/quant_ai_strategy_design.md` for the end-to-end system blueprint that these local commands
