@@ -1,21 +1,25 @@
--- Seed: feature_registry (demo feature)
+-- Feature registry demo entry
 insert into public.feature_registry (name, version, path, meta)
 values (
   'ts2vec_v1',
   '0.1.0',
   'features/generate_ts2vec_embeddings.py',
   '{"notes":"demo seed"}'
-);
+)
+on conflict (name, version) do update set
+  path = excluded.path,
+  meta = excluded.meta;
 
--- Seed: backtest_results (demo run)
+-- Backtest results demo row
 insert into public.backtest_results (config, metrics, artifacts)
 values (
   '{"strategy":"demo","window":"2024-01-01/2024-01-15"}',
   '{"sharpe":0.00,"max_drawdown":0.00,"n_trades":0}',
   '{"plots":["storage://backtests/demo_equity_curve.png"]}'
-);
+)
+ on conflict do nothing;
 
--- Seed: signal_embeddings (one 128-dim vector for AAPL over a small window)
+-- Signal embeddings sample vector
 insert into public.signal_embeddings (asset_symbol, time_range, embedding, regime_tag, label, meta)
 values (
   'AAPL',
@@ -36,28 +40,134 @@ values (
   'demo',
   '{"y_next":0}',
   '{"notes":"seed"}'
-);
-
--- Seed: signal_fingerprints (demo fingerprint vector)
-insert into public.signal_fingerprints (
-    signal_name,
-    as_of,
-    version,
-    fingerprint,
-    stats,
-    tags,
-    metadata
-) values (
-    'demo_signal',
-    '2024-01-01',
-    'v1',
-    '[0.0078, 0.0156, 0.0234, 0.0312, 0.039, 0.0468, 0.0546, 0.0624, 0.0702, 0.078, 0.0858, 0.0936, 0.1014, 0.1092, 0.117, 0.1248, 0.1326, 0.1404, 0.1482, 0.156, 0.1638, 0.1716, 0.1794, 0.1872, 0.195, 0.2028, 0.2106, 0.2184, 0.2262, 0.234, 0.2418, 0.2496, 0.2574, 0.2652, 0.273, 0.2808, 0.2886, 0.2964, 0.3042, 0.312, 0.3198, 0.3276, 0.3354, 0.3432, 0.351, 0.3588, 0.3666, 0.3744, 0.3822, 0.39, 0.3978, 0.4056, 0.4134, 0.4212, 0.429, 0.4368, 0.4446, 0.4524, 0.4602, 0.468, 0.4758, 0.4836, 0.4914, 0.4992, 0.507, 0.5148, 0.5226, 0.5304, 0.5382, 0.546, 0.5538, 0.5616, 0.5694, 0.5772, 0.585, 0.5928, 0.6006, 0.6084, 0.6162, 0.624, 0.6318, 0.6396, 0.6474, 0.6552, 0.663, 0.6708, 0.6786, 0.6864, 0.6942, 0.702, 0.7098, 0.7176, 0.7254, 0.7332, 0.741, 0.7488, 0.7566, 0.7644, 0.7722, 0.78, 0.7878, 0.7956, 0.8034, 0.8112, 0.819, 0.8268, 0.8346, 0.8424, 0.8502, 0.858, 0.8658, 0.8736, 0.8814, 0.8892, 0.897, 0.9048, 0.9126, 0.9204, 0.9282, 0.936, 0.9438, 0.9516, 0.9594, 0.9672, 0.975, 0.9828, 0.9906, 0.9984]',
-    '{"source": "seed", "note": "demo fingerprint"}',
-    array['seed', 'demo'],
-    '{"ingested_by": "supabase/seed.sql"}'
 )
-on conflict (signal_name, as_of, version) do update set
+on conflict do nothing;
+
+-- Edgar Form 4 filing demo row
+insert into public.edgar_filings (
+    accession_number,
+    cik,
+    form_type,
+    company_name,
+    filing_date,
+    filed_at,
+    symbol,
+    reporter,
+    reporter_cik,
+    xml_url,
+    payload_sha256,
+    xml_sha256,
+    provenance
+) values (
+    '0000123456-24-000001',
+    '0000123456',
+    '4',
+    'Acme Inc',
+    '2024-12-31',
+    '2024-12-31',
+    'ACME',
+    'John Doe',
+    '0000554321',
+    'https://www.sec.gov/Archives/edgar/data/0000123456/0000123456-24-000001/primary_doc.xml',
+    'd5a1f28b39b0eae8e6a4df7fcb5a0aa32a4ed3d8f4e5c1d5a1475413b90fd0a8',
+    '3f8f3b5d6f1a2a1234567890abcdef1234567890abcdef1234567890abcdef12',
+    '{"parser_version":"form4-xml-v1","source":"seed"}'
+)
+on conflict (accession_number) do update set
+    company_name = excluded.company_name,
+    filing_date = excluded.filing_date,
+    filed_at = excluded.filed_at,
+    symbol = excluded.symbol,
+    reporter = excluded.reporter,
+    reporter_cik = excluded.reporter_cik,
+    xml_url = excluded.xml_url,
+    payload_sha256 = excluded.payload_sha256,
+    xml_sha256 = excluded.xml_sha256,
+    provenance = excluded.provenance;
+
+-- Insider transactions tied to the demo filing
+insert into public.insider_transactions (
+    accession_number,
+    insider_name,
+    reporter_cik,
+    symbol,
+    transaction_date,
+    transaction_code,
+    shares,
+    price
+) values (
+    '0000123456-24-000001',
+    'John Doe',
+    '0000554321',
+    'ACME',
+    '2024-12-30',
+    'P',
+    1000.0,
+    10.5
+)
+on conflict (accession_number, transaction_date, transaction_code, symbol) do update set
+    shares = excluded.shares,
+    price = excluded.price,
+    insider_name = excluded.insider_name,
+    reporter_cik = excluded.reporter_cik;
+
+-- FINRA daily features for the symbol
+insert into public.daily_features (
+    symbol,
+    trade_date,
+    short_vol_share,
+    short_exempt_share,
+    ats_share_of_total,
+    provenance
+) values (
+    'ACME',
+    '2024-12-30',
+    0.12,
+    0.01,
+    0.25,
+    '{"feature_version":"offexchange-features-v1","source":"seed"}'
+)
+on conflict (symbol, trade_date) do update set
+    short_vol_share = excluded.short_vol_share,
+    short_exempt_share = excluded.short_exempt_share,
+    ats_share_of_total = excluded.ats_share_of_total,
+    provenance = excluded.provenance;
+
+-- Demo fingerprint aligned to the new schema
+insert into public.signal_fingerprints (
+    id,
+    signal_name,
+    version,
+    asset_symbol,
+    window_start,
+    window_end,
+    fingerprint,
+    provenance,
+    meta
+) values (
+    '11111111-2222-3333-4444-555555555555',
+    'demo_signal',
+    'v2',
+    'ACME',
+    '2024-12-23',
+    '2024-12-30',
+    '[0.0078, 0.0156, 0.0234, 0.0312, 0.039, 0.0468, 0.0546, 0.0624, 0.0702, 0.078,
+      0.0858, 0.0936, 0.1014, 0.1092, 0.117, 0.1248, 0.1326, 0.1404, 0.1482, 0.156,
+      0.1638, 0.1716, 0.1794, 0.1872, 0.195, 0.2028, 0.2106, 0.2184, 0.2262, 0.234,
+      0.2418, 0.2496, 0.2574, 0.2652, 0.273, 0.2808, 0.2886, 0.2964, 0.3042, 0.312,
+      0.3198, 0.3276, 0.3354, 0.3432, 0.351, 0.3588, 0.3666, 0.3744, 0.3822, 0.39,
+      0.3978, 0.4056, 0.4134, 0.4212, 0.429, 0.4368, 0.4446, 0.4524, 0.4602, 0.468,
+      0.4758, 0.4836, 0.4914, 0.4992, 0.507, 0.5148, 0.5226, 0.5304, 0.5382, 0.546,
+      0.5538, 0.5616, 0.5694, 0.5772, 0.585, 0.5928, 0.6006, 0.6084, 0.6162, 0.624,
+      0.6318, 0.6396, 0.6474, 0.6552, 0.663, 0.6708, 0.6786, 0.6864, 0.6942, 0.702,
+      0.7098, 0.7176, 0.7254, 0.7332, 0.741, 0.7488, 0.7566, 0.7644, 0.7722, 0.78,
+      0.7878, 0.7956, 0.8034, 0.8112, 0.819, 0.8268, 0.8346, 0.8424, 0.8502, 0.858,
+      0.8658, 0.8736, 0.8814, 0.8892, 0.897, 0.9048, 0.9126, 0.9204, 0.9282, 0.936,
+      0.9438, 0.9516, 0.9594, 0.9672, 0.975, 0.9828, 0.9906, 0.9984]',
+    '{"source":"seed","feature_version":"fingerprints-demo-v1"}',
+    '{"ingested_by":"supabase/seed.sql"}'
+)
+on conflict (signal_name, version, asset_symbol, window_start, window_end) do update set
     fingerprint = excluded.fingerprint,
-    stats = excluded.stats,
-    tags = excluded.tags,
-    metadata = excluded.metadata;
+    provenance = excluded.provenance,
+    meta = excluded.meta;

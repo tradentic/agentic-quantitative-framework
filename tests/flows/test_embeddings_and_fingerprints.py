@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
+import logging
 
 import numpy as np
 import pandas as pd
@@ -16,6 +18,7 @@ from flows.embeddings_and_fingerprints import (
     build_fingerprint_records,
     concatenate_feature_blocks,
     execute_embedder,
+    fingerprint_vectorization,
     prepare_numeric_payload,
 )
 
@@ -120,14 +123,88 @@ def test_execute_embedder_class(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_build_fingerprint_records() -> None:
     vectors = np.ones((2, 3))
-    metadata = [{"timestamp": datetime(2024, 1, 1, 9)}, {"timestamp": datetime(2024, 1, 1, 10)}]
+    metadata = [
+        {
+            "window_start": datetime(2024, 1, 1, 9),
+            "window_end": datetime(2024, 1, 1, 10),
+        },
+        {
+            "window_start": datetime(2024, 1, 2, 9),
+            "window_end": datetime(2024, 1, 2, 10),
+        },
+    ]
     records = build_fingerprint_records(
         vectors=vectors,
+        signal_name="demo",
+        signal_version="v1",
         asset_symbol="XYZ",
         window_metadata=metadata,
-        provenance={"embedders": ["test"]},
+        provenance={
+            "embedders": ["test"],
+            "feature_version": "fingerprint-demo",
+            "source_url": ["memory"],
+        },
         base_metadata={"source": "unit"},
     )
     assert len(records) == 2
     assert records[0]["meta"]["source"] == "unit"
-    assert records[0]["as_of"].startswith("2024-01-01T09:00:00")
+    assert records[0]["window_start"] == "2024-01-01"
+    assert "fingerprint_sha256" in records[0]["provenance"]
+
+
+def test_fingerprint_vectorization_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _StubFuture:
+        def __init__(self, value: Any):
+            self._value = value
+
+        def result(self) -> Any:
+            return self._value
+
+    class _StubTask:
+        def __init__(self, fn):
+            self._fn = fn
+
+        def submit(self, rows, table_name):
+            return _StubFuture(self._fn(rows, table_name))
+
+    captured: dict[str, Any] = {}
+
+    def _capture(rows, table_name):
+        captured["rows"] = rows
+        captured["table"] = table_name
+        return rows
+
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints._persist",
+        _StubTask(_capture),
+    )
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints.get_run_logger",
+        lambda: logging.getLogger("test"),
+    )
+
+    df = pd.DataFrame(
+        {
+            "window_start": [pd.Timestamp("2024-12-23"), pd.Timestamp("2024-12-24")],
+            "window_end": [pd.Timestamp("2024-12-30"), pd.Timestamp("2024-12-31")],
+            "feature_a": [1.0, 2.0],
+        }
+    )
+
+    records = fingerprint_vectorization.fn(
+        signal_name="demo",
+        signal_version="v9",
+        asset_symbol="ACME",
+        embedder_configs=[],
+        numeric_features=df,
+        feature_columns=["feature_a"],
+        metadata_columns=["window_start", "window_end"],
+        base_metadata={"feature_version": "fingerprint-demo", "source_url": ["memory"]},
+        target_dim=1,
+        use_pca=False,
+    )
+
+    assert captured["table"] == "signal_fingerprints"
+    assert len(records) == 2
+    assert records[0]["signal_name"] == "demo"
+    assert records[0]["window_end"] == "2024-12-30"

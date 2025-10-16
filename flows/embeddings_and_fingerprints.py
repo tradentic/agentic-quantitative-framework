@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from importlib import import_module
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from prefect import flow, get_run_logger, task
 
+from framework.provenance import hash_bytes
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 
 
@@ -199,11 +200,15 @@ def align_dimensions(
 def build_fingerprint_records(
     *,
     vectors: np.ndarray,
+    signal_name: str,
+    signal_version: str,
     asset_symbol: str,
-    window_metadata: Sequence[Mapping[str, Any]],
+    window_metadata: Sequence[Mapping[str, Any]] | None,
     provenance: Mapping[str, Any],
     base_metadata: Mapping[str, Any] | None = None,
-    timestamp_field: str = "timestamp",
+    window_start_field: str = "window_start",
+    window_end_field: str = "window_end",
+    fallback_timestamp_field: str = "timestamp",
     table_name: str = "signal_fingerprints",
 ) -> list[dict[str, Any]]:
     """Assemble payloads ready for Supabase upsert operations."""
@@ -211,21 +216,52 @@ def build_fingerprint_records(
     if window_metadata and len(window_metadata) != vectors.shape[0]:
         raise ValueError("window_metadata length must match the number of vectors.")
 
+    if "feature_version" not in provenance or "source_url" not in provenance:
+        raise ValueError("provenance must include 'feature_version' and 'source_url'.")
+
     records: list[dict[str, Any]] = []
     default_meta = dict(base_metadata or {})
+
+    def _coerce_date(value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, str) and value:
+            return value
+        raise ValueError("Fingerprint records require window_start/window_end metadata.")
+
     for idx, vector in enumerate(vectors):
         row_meta = dict(default_meta)
         if window_metadata:
             row_meta.update(window_metadata[idx])
-        as_of = row_meta.get(timestamp_field) or row_meta.get("as_of")
-        if isinstance(as_of, datetime):
-            as_of = as_of.isoformat()
+        window_start_raw = (
+            row_meta.get(window_start_field)
+            or row_meta.get(fallback_timestamp_field)
+            or row_meta.get("as_of")
+        )
+        window_end_raw = (
+            row_meta.get(window_end_field)
+            or row_meta.get(fallback_timestamp_field)
+            or row_meta.get("as_of")
+        )
+        window_start = _coerce_date(window_start_raw)
+        window_end = _coerce_date(window_end_raw)
+
+        vector_list = vector.astype(float).tolist()
+        vector_hash = hash_bytes(np.asarray(vector_list, dtype=float).tobytes())
+        record_provenance = dict(provenance)
+        record_provenance["fingerprint_sha256"] = vector_hash
+
         record = {
             "id": str(uuid4()),
+            "signal_name": signal_name,
+            "version": signal_version,
             "asset_symbol": asset_symbol,
-            "as_of": as_of,
-            "fingerprint": vector.astype(float).tolist(),
-            "provenance": dict(provenance),
+            "window_start": window_start,
+            "window_end": window_end,
+            "fingerprint": vector_list,
+            "provenance": record_provenance,
             "meta": row_meta,
             "table": table_name,
         }
@@ -251,7 +287,11 @@ def upsert_fingerprint_rows(
         {k: v for k, v in row.items() if k != "table"}
         for row in rows
     ]
-    response = client.table(table_name).upsert(payload).execute()
+    response = (
+        client.table(table_name)
+        .upsert(payload, on_conflict="signal_name,version,asset_symbol,window_start,window_end")
+        .execute()
+    )
     data = getattr(response, "data", None)
     if data is None:  # pragma: no cover - depends on client behaviour
         return list(payload)
@@ -271,6 +311,8 @@ def _persist(rows: Sequence[dict[str, Any]], table_name: str) -> list[dict[str, 
 @flow(name="fingerprint-vectorization")
 def fingerprint_vectorization(
     *,
+    signal_name: str,
+    signal_version: str = "v1",
     asset_symbol: str,
     embedder_configs: Sequence[EmbedderConfig],
     numeric_features: pd.DataFrame | Sequence[Mapping[str, Any]] | None,
@@ -281,6 +323,10 @@ def fingerprint_vectorization(
     target_dim: int | None = 256,
     use_pca: bool = True,
     table_name: str = "signal_fingerprints",
+    provenance_overrides: Mapping[str, Any] | None = None,
+    window_start_field: str = "window_start",
+    window_end_field: str = "window_end",
+    fallback_timestamp_field: str = "timestamp",
 ) -> list[dict[str, Any]]:
     """Prefect flow that builds and persists signal fingerprint vectors."""
 
@@ -323,13 +369,27 @@ def fingerprint_vectorization(
         "target_dim": target_dim,
         "pca": use_pca,
     }
+    if base_metadata:
+        if "feature_version" in base_metadata:
+            provenance.setdefault("feature_version", base_metadata["feature_version"])
+        if "source_url" in base_metadata:
+            provenance.setdefault("source_url", base_metadata["source_url"])
+    if provenance_overrides:
+        provenance.update(provenance_overrides)
+    if "feature_version" not in provenance or "source_url" not in provenance:
+        raise ValueError("provenance must include 'feature_version' and 'source_url'.")
 
     records = build_fingerprint_records(
         vectors=aligned,
+        signal_name=signal_name,
+        signal_version=signal_version,
         asset_symbol=asset_symbol,
         window_metadata=window_metadata,
         provenance=provenance,
         base_metadata=base_metadata,
+        window_start_field=window_start_field,
+        window_end_field=window_end_field,
+        fallback_timestamp_field=fallback_timestamp_field,
         table_name=table_name,
     )
     logger.info("Prepared %d fingerprint records", len(records))

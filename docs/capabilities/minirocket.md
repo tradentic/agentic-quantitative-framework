@@ -24,7 +24,7 @@ PY
 ```
 
 ## Failure Modes
-* Missing `sktime` dependency raises a `ModuleNotFoundError` prompting installation instructions.
+* Missing `sktime` dependency raises a `ModuleNotFoundError` at call time with explicit installation instructions; the module itself imports without `sktime` installed so pipelines can still load.
 * Invalid array shapes or non-numeric dtypes raise descriptive `TypeError`/`ValueError` exceptions.
 * Requesting zero or negative `num_features` triggers a `ValueError` to prevent invalid MiniRocket configurations.
 

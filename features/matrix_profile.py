@@ -60,19 +60,26 @@ def compute_matrix_profile_metrics(
     _validate_parameters(series, subseq_length, max_motifs)
     values = _as_float_array(series)
 
-    try:
-        import stumpy  # type: ignore import-not-found
-    except ImportError as exc:  # pragma: no cover - exercised when dependency missing
-        raise ImportError(
-            "stumpy is required to compute matrix profile features. Install it via 'pip install stumpy'."
-        ) from exc
+    small_window = subseq_length < 3
+    if small_window:
+        matrix_profile = _naive_matrix_profile(values, subseq_length)
+    else:
+        try:
+            import stumpy  # type: ignore import-not-found
+        except ImportError as exc:  # pragma: no cover - exercised when dependency missing
+            raise ImportError(
+                "stumpy is required to compute matrix profile features. Install it via 'pip install stumpy'."
+            ) from exc
 
-    profile = stumpy.stump(values, subseq_length)
-    matrix_profile = profile[:, 0]
+        profile = stumpy.stump(values, subseq_length)
+        matrix_profile = np.asarray(profile[:, 0], dtype=float)
 
     discord_distance = _finite_nan_safe_max(matrix_profile)
     primary_motif_distance = _finite_nan_safe_min(matrix_profile)
-    motif_counts = _compute_motif_counts(values, subseq_length, matrix_profile, max_motifs)
+    if small_window:
+        motif_counts = _small_window_motif_counts(values, subseq_length, max_motifs)
+    else:
+        motif_counts = _compute_motif_counts(values, subseq_length, matrix_profile, max_motifs)
 
     return MatrixProfileFeatures(
         discord_distance=float(discord_distance) if np.isfinite(discord_distance) else float("nan"),
@@ -99,6 +106,41 @@ def _as_float_array(series: Sequence[float] | np.ndarray) -> np.ndarray:
     if values.ndim != 1:
         raise ValueError("series must be one-dimensional")
     return values
+
+
+def _naive_matrix_profile(series: np.ndarray, subseq_length: int) -> np.ndarray:
+    subsequences = series.shape[0] - subseq_length + 1
+    if subsequences <= 0:
+        raise ValueError("series length must exceed subseq_length")
+    profile = np.full(subsequences, float("inf"), dtype=float)
+    if subsequences == 1:
+        return profile
+
+    for idx in range(subsequences):
+        seed = series[idx : idx + subseq_length]
+        best = float("inf")
+        for candidate in range(subsequences):
+            if candidate == idx:
+                continue
+            candidate_slice = series[candidate : candidate + subseq_length]
+            distance = _znormalized_euclidean_distance(seed, candidate_slice)
+            if distance < best:
+                best = distance
+        profile[idx] = best
+    return profile
+
+
+def _small_window_motif_counts(series: np.ndarray, subseq_length: int, max_motifs: int) -> List[int]:
+    subsequences = series.shape[0] - subseq_length + 1
+    if subsequences <= 0:
+        return []
+    pattern_counts: dict[tuple[float, ...], int] = {}
+    for idx in range(subsequences):
+        window = tuple(float(x) for x in series[idx : idx + subseq_length])
+        pattern_counts[window] = pattern_counts.get(window, 0) + 1
+
+    sorted_counts = sorted((count for count in pattern_counts.values() if count > 1), reverse=True)
+    return sorted_counts[:max_motifs]
 
 
 def _finite_nan_safe_max(values: np.ndarray) -> float:

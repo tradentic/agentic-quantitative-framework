@@ -12,6 +12,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 import yaml
 
+from framework.provenance import OFFEX_FEATURE_VERSION
+from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 from use_cases.base import StrategyUseCase, UseCaseRequest
 
 logger = logging.getLogger(__name__)
@@ -290,33 +292,196 @@ def run_embeddings(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Modu
 
 
 def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> ModuleResult:
-    """Placeholder fingerprint generation step."""
+    """Generate and persist signal fingerprints from daily features."""
 
-    fingerprint_size = int(options.get("fingerprint_size", 256) or 256)
-    logger.info(
-        "Generating (mocked) fingerprints at dimension %d for %s",
-        fingerprint_size,
-        runtime.trade_date,
-    )
+    if _should_mock(runtime, options):
+        logger.info("Fingerprint generation mocked")
+        return {"status": "mocked", "reason": "mock enabled"}
+
+    trade_date = _coerce_date(options.get("trade_date")) if options.get("trade_date") else runtime.trade_date
+    if trade_date is None:
+        logger.info("Fingerprint generation skipped due to missing trade date")
+        return {"status": "skipped", "reason": "no trade date"}
+
+    symbol_list = list(runtime.symbols) if runtime.symbols else []
+    extra_symbols = options.get("symbols")
+    if extra_symbols:
+        if isinstance(extra_symbols, (str, bytes)):
+            symbol_list.append(str(extra_symbols))
+        else:
+            symbol_list.extend(str(sym) for sym in extra_symbols)
+    symbols = tuple(sorted({sym.strip().upper() for sym in symbol_list if sym}))
+
+    try:
+        client = get_supabase_client()
+    except MissingSupabaseConfiguration:
+        client = None
+
+    feature_rows: list[dict[str, Any]] = []
+    if client is not None:
+        query = (
+            client.table("daily_features")
+            .select("symbol,trade_date,short_vol_share,short_exempt_share,ats_share_of_total,provenance")
+            .eq("trade_date", trade_date.isoformat())
+        )
+        if symbols:
+            query = query.in_("symbol", list(symbols))
+        response = query.execute()
+        feature_rows = getattr(response, "data", None) or []
+
+    if not feature_rows:
+        from flows.compute_offexchange_features import compute_offexchange_features
+
+        logger.info("Falling back to on-the-fly FINRA feature computation for %s", trade_date)
+        feature_rows = compute_offexchange_features.fn(
+            trade_date=trade_date,
+            symbols=list(symbols) if symbols else None,
+            persist=bool(options.get("persist_features", False)),
+        )
+
+    if not feature_rows:
+        logger.info("No FINRA features available for fingerprinting on %s", trade_date)
+        return {"status": "skipped", "reason": "no features"}
+
+    window_days = int(options.get("window_days", 7) or 7)
+    window_start = (trade_date - timedelta(days=abs(window_days))).isoformat()
+    window_end = trade_date.isoformat()
+    target_dim = int(options.get("fingerprint_size", 256) or 256)
+    signal_name = str(options.get("signal_name", "insider_offexchange")).strip() or "insider_offexchange"
+    signal_version = str(options.get("signal_version", "v1")).strip() or "v1"
+    feature_version = str(options.get("feature_version", OFFEX_FEATURE_VERSION))
+    use_pca = bool(options.get("use_pca", True))
+
+    feature_columns = ["short_vol_share", "short_exempt_share", "ats_share_of_total"]
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    provenance_sources: dict[str, set[str]] = {}
+    for row in feature_rows:
+        symbol = str(row.get("symbol", "")).strip().upper()
+        if not symbol:
+            continue
+        payload = {
+            "window_start": window_start,
+            "window_end": window_end,
+            "short_vol_share": row.get("short_vol_share"),
+            "short_exempt_share": row.get("short_exempt_share"),
+            "ats_share_of_total": row.get("ats_share_of_total"),
+        }
+        grouped.setdefault(symbol, []).append(payload)
+        provenance = row.get("provenance") or {}
+        sources = provenance.get("source_url")
+        if isinstance(sources, str):
+            provenance_sources.setdefault(symbol, set()).add(sources)
+        elif isinstance(sources, Sequence):
+            provenance_sources.setdefault(symbol, set()).update(str(src) for src in sources if src)
+
+    if not grouped:
+        logger.info("No symbols yielded fingerprint payloads on %s", trade_date)
+        return {"status": "skipped", "reason": "no numeric payloads"}
+
+    from flows.embeddings_and_fingerprints import fingerprint_vectorization
+
+    persisted: list[dict[str, Any]] = []
+    for symbol, rows in grouped.items():
+        base_metadata = {
+            "feature_version": feature_version,
+            "source_url": sorted(provenance_sources.get(symbol) or {f"daily_features:{trade_date}"}),
+        }
+        try:
+            result = fingerprint_vectorization.fn(
+                signal_name=signal_name,
+                signal_version=signal_version,
+                asset_symbol=symbol,
+                embedder_configs=[],
+                numeric_features=rows,
+                feature_columns=feature_columns,
+                metadata_columns=["window_start", "window_end"],
+                base_metadata=base_metadata,
+                target_dim=target_dim,
+                use_pca=use_pca,
+            )
+        except ValueError as exc:
+            logger.error("Fingerprint generation failed for %s: %s", symbol, exc)
+            raise
+        persisted.extend(result)
+
     return {
         "status": "ok",
-        "fingerprint_size": fingerprint_size,
-        "note": "Placeholder implementation; integrate real fingerprint flow here.",
+        "trade_date": trade_date.isoformat(),
+        "symbols": sorted(grouped),
+        "fingerprints": len(persisted),
     }
 
 
 def run_scans(runtime: PipelineRuntime, options: Mapping[str, Any]) -> ModuleResult:
-    """Placeholder similarity scan step."""
+    """Execute similarity searches against recent fingerprints."""
 
     if _should_mock(runtime, options):
         logger.info("Similarity scans mocked")
         return {"status": "mocked", "reason": "mock enabled", "top_k": options.get("top_k", 10)}
+
+    trade_date = _coerce_date(options.get("trade_date")) if options.get("trade_date") else runtime.trade_date
+    if trade_date is None:
+        logger.info("Similarity scans skipped due to missing trade date")
+        return {"status": "skipped", "reason": "no trade date"}
+
+    symbols = tuple(sorted(runtime.symbols)) if runtime.symbols else ()
+    if not symbols:
+        logger.info("Similarity scans skipped due to missing symbols")
+        return {"status": "skipped", "reason": "no symbols"}
+
+    signal_name = str(options.get("signal_name", "insider_offexchange")).strip() or "insider_offexchange"
+    signal_version = str(options.get("signal_version", "v1")).strip() or "v1"
     top_k = int(options.get("top_k", 10) or 10)
-    logger.info("Running placeholder similarity scan with top_k=%d", top_k)
+
+    try:
+        client = get_supabase_client()
+    except MissingSupabaseConfiguration:
+        logger.warning("Supabase credentials missing; skipping similarity scans")
+        return {"status": "skipped", "reason": "supabase not configured"}
+
+    from flows.similarity_scans import SimilarityQuery, perform_similarity_search
+
+    results: list[dict[str, Any]] = []
+    for symbol in symbols:
+        response = (
+            client.table("signal_fingerprints")
+            .select("fingerprint,meta,window_end")
+            .eq("signal_name", signal_name)
+            .eq("version", signal_version)
+            .eq("asset_symbol", symbol)
+            .eq("window_end", trade_date.isoformat())
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        if not rows:
+            continue
+        row = rows[0]
+        try:
+            query = SimilarityQuery(
+                symbol=symbol,
+                window=row.get("window_end") or trade_date.isoformat(),
+                embedding=list(row.get("fingerprint") or []),
+                metadata=row.get("meta") or {},
+            )
+        except ValueError as exc:
+            logger.warning("Skipping similarity scan for %s: %s", symbol, exc)
+            continue
+        matches = perform_similarity_search(query, k=top_k)
+        results.append({
+            "symbol": symbol,
+            "matches": [match.as_dict() for match in matches],
+        })
+
+    if not results:
+        logger.info("No fingerprints available for similarity scans on %s", trade_date)
+        return {"status": "skipped", "reason": "no fingerprints"}
+
     return {
         "status": "ok",
         "top_k": top_k,
-        "note": "Placeholder similarity scan; integrate vector search when available.",
+        "trade_date": trade_date.isoformat(),
+        "results": results,
     }
 
 

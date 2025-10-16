@@ -55,7 +55,8 @@ class ParsedForm4:
     symbol: str
     transactions: list[Form4Transaction]
     reporter: str
-    cik: str
+    issuer_cik: str
+    reporter_cik: str
     accession: str
 
 
@@ -234,14 +235,16 @@ def parse_form4_xml(xml_bytes: bytes) -> ParsedForm4:
     root = ET.fromstring(xml_bytes)
     symbol = _find_text(root, "issuerTradingSymbol") or ""
     reporter = _find_text(root, "rptOwnerName") or ""
-    cik = _find_text(root, "issuerCik") or ""
+    issuer_cik = _find_text(root, "issuerCik") or ""
+    reporter_cik = _find_text(root, "rptOwnerCik") or ""
     accession = _find_text(root, "accessionNumber") or ""
     transactions = list(_iter_transactions(root))
     return ParsedForm4(
         symbol=symbol,
         transactions=transactions,
         reporter=reporter,
-        cik=cik,
+        issuer_cik=issuer_cik,
+        reporter_cik=reporter_cik,
         accession=accession,
     )
 

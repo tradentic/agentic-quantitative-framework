@@ -95,7 +95,16 @@ def persist_features(trade_date: date, week_ending: date, rows: Sequence[dict[st
     except MissingSupabaseConfiguration:
         logger.warning("Supabase credentials missing; skipping persistence for %d rows", len(rows))
         return 0
-    client.table("daily_features").upsert(list(rows), on_conflict="symbol,trade_date").execute()
+    enriched: list[dict[str, object]] = []
+    for row in rows:
+        payload = dict(row)
+        payload["provenance"] = {
+            "feature_version": OFFEX_FEATURE_VERSION,
+            "source_url": _build_short_volume_sources(trade_date)
+            + _build_ats_sources(week_ending),
+        }
+        enriched.append(payload)
+    client.table("daily_features").upsert(enriched, on_conflict="symbol,trade_date").execute()
     logger.info("Persisted %d off-exchange feature rows", len(rows))
     provenance_meta = {
         "feature_version": OFFEX_FEATURE_VERSION,

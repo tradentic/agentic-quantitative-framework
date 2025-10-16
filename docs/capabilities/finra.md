@@ -13,6 +13,7 @@ Daily market structure features derived from FINRA datasets provide visibility i
   - `short_vol_share`: daily short volume ÷ reported total volume.
   - `short_exempt_share`: daily short exempt volume ÷ reported total volume.
   - `ats_share_of_total`: weekly ATS share volume ÷ reported total share volume, broadcast to each trading day in the week.
+- `provenance` JSON stored alongside each row containing `feature_version` and merged source URLs for downstream hashing.
 - Returned list of feature dictionaries from the Prefect flow when `persist=False`.
 
 ## Configuration

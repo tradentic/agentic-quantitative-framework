@@ -15,10 +15,17 @@ module_defaults:
     enabled: true
     options:
       fingerprint_size: 256
+      signal_name: insider_offexchange
+      signal_version: v1
+      feature_version: fingerprint-offexchange-v1
+      window_days: 7
+      use_pca: true
   scans:
     enabled: true
     options:
       top_k: 10
+      signal_name: insider_offexchange
+      signal_version: v1
   backtest:
     enabled: true
     options:
@@ -51,6 +58,8 @@ modes:
         limit: 10
         mock: true
     - name: fingerprints
+      options:
+        mock: true
     - name: scans
       options:
         mock: true
@@ -66,6 +75,8 @@ modes:
       options:
         limit: 15
     - name: fingerprints
+      options:
+        persist_features: true
     - name: scans
       options:
         mock: true

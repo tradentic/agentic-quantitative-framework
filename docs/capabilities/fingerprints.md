@@ -6,19 +6,23 @@
 - Enable drift monitoring and downstream k-NN retrievals without duplicating feature engineering pipelines.
 
 ## Inputs
-- Prefect flow parameters (`asset_symbol`, embedder configs, numeric feature frame or records).
-- Optional timestamps aligned to embedding windows for metadata enrichment.
+- Prefect flow parameters (`signal_name`, `signal_version`, `asset_symbol`, embedder configs, numeric feature frame or records).
+- Window metadata per row must expose `window_start` and `window_end` (dates) used to populate Supabase keys.
 - Supabase configuration via `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables.
 
 ## Outputs
-- Upserted rows in `signal_fingerprints` with `fingerprint` vectors, provenance, and metadata per window.
+- Upserted rows in `signal_fingerprints` keyed by `(signal_name, version, asset_symbol, window_start, window_end)` with:
+  - `fingerprint` vectors sized to `target_dim` (zero padded or PCA-projected as needed).
+  - `provenance` including embedder roster, feature metadata, source URLs, and `fingerprint_sha256` hash.
+  - `meta` payload combining base metadata with per-window context.
 - Flow return value containing the Supabase response (or offline payload when credentials are absent).
 - Prefect logs summarizing dimensionality alignment and persistence counts.
 
 ## Configuration & Usage Notes
 - Declare embedders with `EmbedderConfig` (`name`, `callable_path`, `params`, `enabled`). Missing modules fall back to identity transforms.
-- Provide numeric features as a pandas `DataFrame` or sequence of mappings; specify `feature_columns` and optional `metadata_columns`.
+- Provide numeric features as a pandas `DataFrame` or sequence of mappings; specify `feature_columns` and `metadata_columns` that include `window_start` and `window_end` so database keys are populated.
 - Use `target_dim` with `use_pca=True` to reduce dimensionality via SVD-based PCA before pgvector insertion.
+- Supply `provenance_overrides` or `base_metadata` with `feature_version` and `source_url` to satisfy provenance validation.
 - Set `table_name` if the Supabase table name differs from the default `signal_fingerprints`.
 
 ## CLI Examples
@@ -30,7 +34,8 @@
   from flows.embeddings_and_fingerprints import EmbedderConfig, fingerprint_vectorization
 
   df = pd.DataFrame({
-      "timestamp": pd.date_range("2024-01-01", periods=4, freq="h"),
+      "window_start": pd.date_range("2024-01-01", periods=4, freq="h"),
+      "window_end": pd.date_range("2024-01-01", periods=4, freq="h"),
       "feature_a": np.linspace(0, 1, 4),
       "feature_b": np.linspace(1, 2, 4),
   })
@@ -44,11 +49,14 @@
   ]
 
   result = fingerprint_vectorization(
+      signal_name="demo_signal",
+      signal_version="v1",
       asset_symbol="DEMO",
       embedder_configs=configs,
       numeric_features=df,
       feature_columns=["feature_a", "feature_b"],
-      metadata_columns=["timestamp"],
+      metadata_columns=["window_start", "window_end"],
+      base_metadata={"feature_version": "fingerprint-demo-v1", "source_url": ["memory"]},
       target_dim=4,
   )
   print(result)
