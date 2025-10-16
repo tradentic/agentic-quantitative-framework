@@ -27,6 +27,8 @@ supabase db execute --file supabase/sql/signal_embedding_triggers.sql
 # Set up environment variables
 cp .env.example .env
 # Edit .env with your Supabase keys and project reference
+# Populate `.env.local` files from the Supabase CLI status output
+node .devcontainer/scripts/sync-supabase-env.mjs
 
 # Create Python virtual environment
 python3.11 -m venv .venv
@@ -38,6 +40,16 @@ pip install -r requirements.txt
 - PostgreSQL (with pgvector extension)
 - Storage (for raw data or model snapshots)
 - Realtime (agent triggers, data event tracking)
+
+## Sync Supabase environment variables
+
+Run the Supabase CLI locally (`supabase start`) so that `supabase status` reports all of the generated connection details. You can then mirror those values into `.env.local` files by running the provided helper:
+
+```bash
+node .devcontainer/scripts/sync-supabase-env.mjs
+```
+
+By default the script updates `.env.local` at the repo root and the `apps/airnub` and `apps/speckit` workspaces if they exist. Pass a custom file path with `--out path/to/.env.local` when you need to sync a single target. Re-run the script any time you restart Supabase locally to keep the environment variables in sync.
 
 ## Vector DB Configuration
 Use `supabase/sql/signal_embedding_triggers.sql` as a starting point for enabling pgvector and registering automation triggers.
