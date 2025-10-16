@@ -1,11 +1,31 @@
-# agents/gpt_feature_agent.py
+"""Compat wrapper around the LangGraph agent for legacy callers."""
 
-'''
-Example agent scaffold that proposes new feature pipelines and schedules retraining
-'''
+from __future__ import annotations
 
-def analyze_and_propose(feature_log, backtest_summary):
-    # 1. Look for decaying features
-    # 2. Propose symbolic transforms or deeper encoders
-    # 3. Output to features/ or config/
-    pass
+from typing import Any, Dict
+
+from agents.langgraph_chain import AgentState, build_langgraph_chain
+
+
+def analyze_and_propose(feature_log: Dict[str, Any], backtest_summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Invoke the LangGraph chain to generate a new feature proposal."""
+
+    chain = build_langgraph_chain()
+    state = AgentState(
+        task_context={
+            "intent": "propose_new_feature",
+            "payload": {
+                "name": feature_log.get("candidate_name"),
+                "description": feature_log.get("hypothesis"),
+                "metadata": {
+                    "source": "analyze_and_propose",
+                    "backtest_metrics": backtest_summary,
+                },
+            },
+        },
+    )
+    result_state = chain.invoke(state)
+    return {
+        "state": result_state.task_context,
+        "results": result_state.results,
+    }

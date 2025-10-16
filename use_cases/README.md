@@ -5,6 +5,7 @@ This section contains concrete implementations of agent-driven quantitative stra
 Use cases follow a consistent structure:
 - Defined anchor events (e.g., insider filings, regime shifts)
 - Custom labeling and feature generation logic
+- A `pipeline.py` module that subclasses `StrategyUseCase` and builds agent payloads
 - Integration into the agentic loop via LangGraph and Supabase
 - Performance evaluation and vector signal tracking
 

@@ -4,8 +4,10 @@ This project is fully compatible with local-first development using the `supabas
 
 ## Prerequisites
 - Docker installed
-- [Supabase CLI](https://supabase.com/docs/guides/cli) installed (`brew install supabase`)
-- Python 3.10+, Poetry or virtualenv
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase`)
+- Python 3.11+
+- Node.js 24+
+- Poetry or pip for Python dependency management
 
 ## Setup Steps
 
@@ -18,12 +20,16 @@ cd agentic-quantitative-framework
 supabase init
 supabase start
 
+# Apply database schema and RPC helpers
+supabase db push
+supabase db execute --file supabase/sql/signal_embedding_triggers.sql
+
 # Set up environment variables
 cp .env.example .env
 # Edit .env with your Supabase keys and project reference
 
 # Create Python virtual environment
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -34,5 +40,5 @@ pip install -r requirements.txt
 - Realtime (agent triggers, data event tracking)
 
 ## Vector DB Configuration
-Use `supabase/vector_db/setup_pgvector.sql` to enable pgvector and initialize similarity tables.
+Use `supabase/sql/signal_embedding_triggers.sql` as a starting point for enabling pgvector and registering automation triggers.
 

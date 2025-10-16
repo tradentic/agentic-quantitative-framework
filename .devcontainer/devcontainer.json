@@ -7,6 +7,10 @@
       "version": "24",
       "installPnpm": true,
       "pnpmVersion": "10.17.1"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11",
+      "installTools": true
     }
   },
   "updateContentCommand": "bash -lc 'true'",
