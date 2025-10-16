@@ -1,0 +1,73 @@
+module_defaults:
+  sec_ingest:
+    enabled: true
+    options:
+      days_back: 0
+  market_features:
+    enabled: true
+    options:
+      persist: false
+  embeddings:
+    enabled: true
+    options:
+      limit: 5
+  fingerprints:
+    enabled: true
+    options:
+      fingerprint_size: 256
+  scans:
+    enabled: true
+    options:
+      top_k: 10
+  backtest:
+    enabled: true
+    options:
+      limit: 5
+
+modes:
+  train:
+    - name: sec_ingest
+      options:
+        days_back: 30
+    - name: market_features
+      options:
+        persist: true
+    - name: embeddings
+      options:
+        limit: 25
+    - name: fingerprints
+    - name: scans
+    - name: backtest
+      options:
+        limit: 10
+  score:
+    - name: sec_ingest
+      enabled: false
+    - name: market_features
+      options:
+        mock: true
+    - name: embeddings
+      options:
+        limit: 10
+        mock: true
+    - name: fingerprints
+    - name: scans
+      options:
+        mock: true
+    - name: backtest
+      enabled: false
+  refresh:
+    - name: sec_ingest
+      options:
+        days_back: 1
+    - name: market_features
+      enabled: false
+    - name: embeddings
+      options:
+        limit: 15
+    - name: fingerprints
+    - name: scans
+      options:
+        mock: true
+    - name: backtest
+      enabled: false
