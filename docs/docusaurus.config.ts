@@ -12,7 +12,12 @@ const themeConfig: ThemeConfig = {
     },
     items: [
       {type: 'doc', docId: 'intro', position: 'left', label: 'Intro'},
-      {type: 'doc', docId: 'architecture/quant_ai_strategy_design', position: 'left', label: 'Architecture'},
+      {
+        type: 'doc',
+        docId: 'architecture/architecture-quant-ai-strategy-design',
+        position: 'left',
+        label: 'Architecture',
+      },
       {type: 'doc', docId: 'agents', position: 'left', label: 'Agents'},
       {
         href: 'https://github.com/airnub/agentic-quantitative-framework',
@@ -28,7 +33,10 @@ const themeConfig: ThemeConfig = {
         title: 'Docs',
         items: [
           {label: 'Welcome', to: '/'},
-          {label: 'Architecture', to: '/architecture/quant_ai_strategy_design'},
+          {
+            label: 'Architecture',
+            to: '/architecture/quant_ai_strategy_design',
+          },
         ],
       },
       {
