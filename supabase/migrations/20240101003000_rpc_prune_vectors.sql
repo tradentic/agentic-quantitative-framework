@@ -1,4 +1,4 @@
--- RPC that archives low-utility vectors into `signal_embeddings_archive`.
+-- RPC that archives stale or low-signal embeddings.
 
 create or replace function public.rpc_prune_vectors(
     max_age_days integer default 90,
@@ -12,8 +12,8 @@ as
 $$
 declare
     cutoff timestamptz := timezone('utc', now()) - make_interval(days => max_age_days);
-    moved_count integer := 0;
     archived_ids uuid[];
+    moved_count integer := 0;
 begin
     with candidates as (
         select se.*
@@ -23,9 +23,16 @@ begin
            or (se.meta->>'regime_count')::integer < regime_diversity
            or (asset_universe is not null and se.asset_symbol <> all(asset_universe))
     ), moved as (
-        insert into public.signal_embeddings_archive (id, asset_symbol, time_range, embedding, regime_tag, label, meta)
-        select id, asset_symbol, time_range, embedding, regime_tag, label, meta from candidates
-        on conflict (id) do nothing
+        insert into public.signal_embeddings_archive (id, asset_symbol, time_range, embedding, regime_tag, label, meta, archived_at)
+        select id, asset_symbol, time_range, embedding, regime_tag, label, meta, timezone('utc', now()) from candidates
+        on conflict (id) do update
+            set asset_symbol = excluded.asset_symbol,
+                time_range = excluded.time_range,
+                embedding = excluded.embedding,
+                regime_tag = excluded.regime_tag,
+                label = excluded.label,
+                meta = excluded.meta,
+                archived_at = excluded.archived_at
         returning id
     )
     select coalesce(array_agg(id), array[]::uuid[]) into archived_ids from moved;
