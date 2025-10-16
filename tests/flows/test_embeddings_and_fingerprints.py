@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 import types
 from typing import Any
 import logging
@@ -15,7 +16,6 @@ from flows.embeddings_and_fingerprints import (
     EmbedderConfig,
     EmbedderPayload,
     align_dimensions,
-    apply_pca_projection,
     build_fingerprint_records,
     concatenate_feature_blocks,
     execute_embedder,
@@ -88,23 +88,37 @@ def test_concatenate_feature_blocks_mismatched_rows() -> None:
         concatenate_feature_blocks([block_a, block_b])
 
 
-def test_apply_pca_projection_reduces_dimensionality() -> None:
-    matrix = np.arange(20, dtype=float).reshape(5, 4)
-    projected = apply_pca_projection(matrix, target_dim=2)
-    assert projected.shape == (5, 2)
-
-
-def test_align_dimensions_padding() -> None:
+def test_align_dimensions_pads_to_canonical_width() -> None:
     matrix = np.ones((3, 4))
-    aligned = align_dimensions(matrix, target_dim=6, use_pca=False)
-    assert aligned.shape == (3, 6)
+    aligned = align_dimensions(matrix, target_dim=128, use_pca=False)
+    assert aligned.shape == (3, 128)
     assert np.allclose(aligned[:, :4], 1.0)
 
 
-def test_align_dimensions_requires_pca() -> None:
-    matrix = np.ones((3, 6))
+def test_align_dimensions_rejects_non_canonical_target() -> None:
+    matrix = np.ones((2, 2))
     with pytest.raises(ValueError):
-        align_dimensions(matrix, target_dim=4, use_pca=False)
+        align_dimensions(matrix, target_dim=64, use_pca=False)
+
+
+def test_align_dimensions_requires_pca_when_width_exceeds() -> None:
+    matrix = np.random.RandomState(3).randn(5, 256)
+    with pytest.raises(ValueError):
+        align_dimensions(matrix, target_dim=128, use_pca=False)
+
+
+def test_align_dimensions_projects_with_pca(tmp_path: Path) -> None:
+    matrix = np.random.RandomState(4).randn(256, 192)
+    artifact = tmp_path / "pca.pkl"
+    aligned = align_dimensions(
+        matrix,
+        target_dim=128,
+        use_pca=True,
+        pca_artifact_path=artifact,
+        fit_pca_if_missing=True,
+    )
+    assert aligned.shape == (256, 128)
+    assert artifact.exists()
 
 
 def test_execute_embedder_callable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -250,8 +264,8 @@ def test_fingerprint_vectorization_builds_payload(monkeypatch: pytest.MonkeyPatc
         feature_columns=["feature_a"],
         metadata_columns=["window_start", "window_end"],
         base_metadata={"feature_version": "fingerprint-demo", "source_url": ["memory"]},
-        target_dim=1,
         use_pca=False,
+        target_dim=128,
     )
 
     assert captured["table"] == "signal_fingerprints"
@@ -314,3 +328,63 @@ def test_fingerprint_vectorization_default_dimension(monkeypatch: pytest.MonkeyP
     assert len(captured["rows"]) == 1
     fingerprint_lengths = {len(row["fingerprint"]) for row in captured["rows"]}
     assert fingerprint_lengths == {128}
+
+
+def test_fingerprint_vectorization_rejects_non_canonical_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints.get_run_logger",
+        lambda: logging.getLogger("test"),
+    )
+
+    df = pd.DataFrame(
+        {
+            "window_start": [pd.Timestamp("2024-01-01")],
+            "window_end": [pd.Timestamp("2024-01-02")],
+            "feature_a": [1.0],
+        }
+    )
+
+    with pytest.raises(ValueError):
+        fingerprint_vectorization.fn(
+            signal_name="demo",
+            signal_version="v1",
+            asset_symbol="ACME",
+            embedder_configs=[],
+            numeric_features=df,
+            feature_columns=["feature_a"],
+            metadata_columns=["window_start", "window_end"],
+            base_metadata={"feature_version": "fingerprint-demo", "source_url": ["memory"]},
+            target_dim=64,
+            use_pca=False,
+        )
+
+
+def test_fingerprint_vectorization_raises_when_block_exceeds_without_pca(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "flows.embeddings_and_fingerprints.get_run_logger",
+        lambda: logging.getLogger("test"),
+    )
+
+    df = pd.DataFrame(
+        {
+            "window_start": [pd.Timestamp("2024-01-01")],
+            "window_end": [pd.Timestamp("2024-01-02")],
+            **{f"feature_{i}": [float(i)] for i in range(256)},
+        }
+    )
+
+    with pytest.raises(ValueError):
+        fingerprint_vectorization.fn(
+            signal_name="demo",
+            signal_version="v1",
+            asset_symbol="ACME",
+            embedder_configs=[],
+            numeric_features=df,
+            feature_columns=[f"feature_{i}" for i in range(256)],
+            metadata_columns=["window_start", "window_end"],
+            base_metadata={"feature_version": "fingerprint-demo", "source_url": ["memory"]},
+            target_dim=128,
+            use_pca=False,
+        )

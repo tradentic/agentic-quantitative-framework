@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from importlib import import_module
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
@@ -12,6 +13,11 @@ import numpy as np
 import pandas as pd
 from prefect import flow, get_run_logger, task
 
+from features.pca_fingerprint import (
+    DEFAULT_PCA_ARTIFACT_PATH,
+    PCA_COMPONENTS,
+    project_to_fingerprint_width,
+)
 from framework.provenance import hash_bytes
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 
@@ -161,39 +167,39 @@ def concatenate_feature_blocks(blocks: Sequence[np.ndarray]) -> np.ndarray:
     return np.hstack(filtered)
 
 
-def apply_pca_projection(matrix: np.ndarray, target_dim: int) -> np.ndarray:
-    """Project the matrix to ``target_dim`` dimensions using SVD-based PCA."""
-
-    if target_dim <= 0:
-        raise ValueError("target_dim must be a positive integer.")
-    if matrix.shape[1] <= target_dim:
-        return matrix
-
-    centered = matrix - matrix.mean(axis=0, keepdims=True)
-    u, s, vt = np.linalg.svd(centered, full_matrices=False)
-    components = vt[:target_dim]
-    return centered @ components.T
-
-
 def align_dimensions(
     matrix: np.ndarray,
     *,
     target_dim: int | None,
     use_pca: bool,
+    pca_artifact_path: str | Path | None = None,
+    fit_pca_if_missing: bool = True,
 ) -> np.ndarray:
     """Match the desired dimensionality via optional PCA or zero-padding."""
 
-    if target_dim is None:
+    target = target_dim or PCA_COMPONENTS
+    if target != PCA_COMPONENTS:
+        raise ValueError(
+            f"Fingerprint vectors must remain {PCA_COMPONENTS} dimensions; "
+            f"received target_dim={target}."
+        )
+
+    if matrix.shape[1] == target:
         return matrix
-    if matrix.shape[1] == target_dim:
-        return matrix
-    if matrix.shape[1] < target_dim:
-        padding = np.zeros((matrix.shape[0], target_dim - matrix.shape[1]))
+    if matrix.shape[1] < target:
+        padding = np.zeros((matrix.shape[0], target - matrix.shape[1]))
         return np.hstack([matrix, padding])
-    if use_pca:
-        return apply_pca_projection(matrix, target_dim)
-    raise ValueError(
-        "Feature dimensionality exceeds target_dim and PCA is disabled."
+    if not use_pca:
+        raise ValueError(
+            "Feature dimensionality %d exceeds the canonical width %d while PCA is disabled."
+            % (matrix.shape[1], target)
+        )
+
+    artifact = Path(pca_artifact_path) if pca_artifact_path is not None else DEFAULT_PCA_ARTIFACT_PATH
+    return project_to_fingerprint_width(
+        matrix,
+        artifact_path=artifact,
+        fit_if_missing=fit_pca_if_missing,
     )
 
 
@@ -326,6 +332,8 @@ def fingerprint_vectorization(
     base_metadata: Mapping[str, Any] | None = None,
     target_dim: int | None = 128,
     use_pca: bool = True,
+    pca_artifact_path: str | Path | None = None,
+    fit_pca_if_missing: bool = True,
     table_name: str = "signal_fingerprints",
     provenance_overrides: Mapping[str, Any] | None = None,
     window_start_field: str = "window_start",
@@ -350,31 +358,46 @@ def fingerprint_vectorization(
         metadata=base_metadata,
     )
 
-    embedder_blocks: list[np.ndarray] = []
+    block_info: list[tuple[str, np.ndarray]] = []
     enabled = [config for config in embedder_configs if config.enabled]
     if not enabled:
         logger.warning("No embedder configs enabled; using numeric features only.")
     for config in enabled:
         block = _run_embedder.submit(config, payload)
-        embedder_blocks.append(block.result())
-        logger.info("Loaded embedder '%s' with %d dims", config.name, embedder_blocks[-1].shape[1])
+        value = block.result()
+        block_info.append((config.name, value))
+        logger.info("Loaded embedder '%s' with %d dims", config.name, value.shape[1])
 
-    blocks = embedder_blocks + [matrix]
+    block_info.append(("numeric_features", matrix))
+
+    canonical_width = target_dim or PCA_COMPONENTS
+    block_shapes = {name: block.shape[1] for name, block in block_info}
+    if not use_pca:
+        exceeding = {name: width for name, width in block_shapes.items() if width > canonical_width}
+        if exceeding:
+            raise ValueError(
+                "Feature block dimensionality exceeds the canonical width %d: %s"
+                % (canonical_width, exceeding)
+            )
+
+    blocks = [block for _, block in block_info]
     feature_matrix = concatenate_feature_blocks(blocks)
     logger.info("Combined feature matrix shape: %s", feature_matrix.shape)
 
-    aligned = align_dimensions(feature_matrix, target_dim=target_dim, use_pca=use_pca)
+    aligned = align_dimensions(
+        feature_matrix,
+        target_dim=target_dim,
+        use_pca=use_pca,
+        pca_artifact_path=pca_artifact_path,
+        fit_pca_if_missing=fit_pca_if_missing,
+    )
     logger.info("Aligned matrix shape: %s", aligned.shape)
 
-    expected_dim = target_dim or aligned.shape[1]
-    if aligned.shape[1] != expected_dim:
-        logger.warning(
-            "Aligned feature matrix width %d differs from expected %d; proceeding with %d.",
-            aligned.shape[1],
-            expected_dim,
-            aligned.shape[1],
+    if aligned.shape[1] != PCA_COMPONENTS:
+        raise ValueError(
+            "Fingerprint projection must output %d dimensions; received %d (block widths: %s)."
+            % (PCA_COMPONENTS, aligned.shape[1], block_shapes)
         )
-        expected_dim = aligned.shape[1]
 
     provenance = {
         "embedders": [config.name for config in enabled],
@@ -411,12 +434,12 @@ def fingerprint_vectorization(
     invalid_lengths = [
         (idx, len(row.get("fingerprint", [])))
         for idx, row in enumerate(records)
-        if len(row.get("fingerprint", [])) != expected_dim
+        if len(row.get("fingerprint", [])) != PCA_COMPONENTS
     ]
     if invalid_lengths:
         raise ValueError(
             "Fingerprint rows must contain %d values; found mismatches: %s"
-            % (expected_dim, invalid_lengths)
+            % (PCA_COMPONENTS, invalid_lengths)
         )
 
     persisted = _persist.submit(records, table_name).result()
@@ -427,7 +450,6 @@ def fingerprint_vectorization(
 __all__ = [
     "EmbedderConfig",
     "EmbedderPayload",
-    "apply_pca_projection",
     "build_fingerprint_records",
     "concatenate_feature_blocks",
     "fingerprint_vectorization",
