@@ -312,6 +312,8 @@ def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Mo
             symbol_list.extend(str(sym) for sym in extra_symbols)
     symbols = tuple(sorted({sym.strip().upper() for sym in symbol_list if sym}))
 
+    feature_version = str(options.get("feature_version", OFFEX_FEATURE_VERSION))
+
     try:
         client = get_supabase_client()
     except MissingSupabaseConfiguration:
@@ -321,8 +323,11 @@ def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Mo
     if client is not None:
         query = (
             client.table("daily_features")
-            .select("symbol,trade_date,short_vol_share,short_exempt_share,ats_share_of_total,provenance")
+            .select(
+                "symbol,trade_date,short_vol_share,short_exempt_share,ats_share_of_total,provenance"
+            )
             .eq("trade_date", trade_date.isoformat())
+            .eq("feature_version", feature_version)
         )
         if symbols:
             query = query.in_("symbol", list(symbols))
@@ -349,7 +354,6 @@ def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Mo
     target_dim = int(options.get("fingerprint_size", 256) or 256)
     signal_name = str(options.get("signal_name", "insider_offexchange")).strip() or "insider_offexchange"
     signal_version = str(options.get("signal_version", "v1")).strip() or "v1"
-    feature_version = str(options.get("feature_version", OFFEX_FEATURE_VERSION))
     use_pca = bool(options.get("use_pca", True))
 
     feature_columns = ["short_vol_share", "short_exempt_share", "ats_share_of_total"]

@@ -119,6 +119,7 @@ insert into public.daily_features (
     short_vol_share,
     short_exempt_share,
     ats_share_of_total,
+    feature_version,
     provenance
 ) values (
     'ACME',
@@ -126,12 +127,14 @@ insert into public.daily_features (
     0.12,
     0.01,
     0.25,
+    'offexchange-features-v1',
     '{"feature_version":"offexchange-features-v1","source":"seed"}'
 )
-on conflict (symbol, trade_date) do update set
+on conflict (symbol, trade_date, feature_version) do update set
     short_vol_share = excluded.short_vol_share,
     short_exempt_share = excluded.short_exempt_share,
     ats_share_of_total = excluded.ats_share_of_total,
+    feature_version = excluded.feature_version,
     provenance = excluded.provenance;
 
 -- Demo fingerprint aligned to the new schema
@@ -168,7 +171,7 @@ insert into public.signal_fingerprints (
     '{"source":"seed","feature_version":"fingerprints-demo-v1"}',
     '{"ingested_by":"supabase/seed.sql"}'
 )
-on conflict (signal_name, version, asset_symbol, window_start, window_end) do update set
+on conflict (asset_symbol, window_start, window_end, version) do update set
     fingerprint = excluded.fingerprint,
     provenance = excluded.provenance,
     meta = excluded.meta;

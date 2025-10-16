@@ -65,7 +65,8 @@ def test_persist_features_adds_provenance(monkeypatch: pytest.MonkeyPatch):
     assert persisted == 1
     name, payload, conflict = dummy.log[0]
     assert name == "daily_features"
-    assert conflict == "symbol,trade_date"
+    assert conflict == "symbol,trade_date,feature_version"
+    assert payload[0]["feature_version"] == "offexchange-features-v1"
     assert payload[0]["provenance"]["feature_version"].startswith("offexchange")
     assert payload[0]["provenance"]["source_url"]
 

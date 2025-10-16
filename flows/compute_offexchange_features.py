@@ -42,7 +42,13 @@ def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = Non
     except MissingSupabaseConfiguration:
         logger.warning("Supabase credentials missing; no symbols discovered for %s", trade_date)
         return []
-    response = client.table("daily_features").select("symbol").eq("trade_date", trade_date.isoformat()).execute()
+    response = (
+        client.table("daily_features")
+        .select("symbol")
+        .eq("trade_date", trade_date.isoformat())
+        .eq("feature_version", OFFEX_FEATURE_VERSION)
+        .execute()
+    )
     data = getattr(response, "data", None) or []
     normalized = _normalize_symbols(row.get("symbol", "") for row in data)
     logger.info("Fetched %d symbols from daily_features for %s", len(normalized), trade_date)
@@ -98,13 +104,16 @@ def persist_features(trade_date: date, week_ending: date, rows: Sequence[dict[st
     enriched: list[dict[str, object]] = []
     for row in rows:
         payload = dict(row)
+        payload.setdefault("feature_version", OFFEX_FEATURE_VERSION)
         payload["provenance"] = {
             "feature_version": OFFEX_FEATURE_VERSION,
             "source_url": _build_short_volume_sources(trade_date)
             + _build_ats_sources(week_ending),
         }
         enriched.append(payload)
-    client.table("daily_features").upsert(enriched, on_conflict="symbol,trade_date").execute()
+    client.table("daily_features").upsert(
+        enriched, on_conflict="symbol,trade_date,feature_version"
+    ).execute()
     logger.info("Persisted %d off-exchange feature rows", len(rows))
     provenance_meta = {
         "feature_version": OFFEX_FEATURE_VERSION,
@@ -116,7 +125,11 @@ def persist_features(trade_date: date, week_ending: date, rows: Sequence[dict[st
             "hash_sha256": row_hash,
             "computed_at": datetime.now(timezone.utc).isoformat(),
         }
-        pk = {"symbol": row["symbol"], "trade_date": row["trade_date"]}
+        pk = {
+            "symbol": row["symbol"],
+            "trade_date": row["trade_date"],
+            "feature_version": OFFEX_FEATURE_VERSION,
+        }
         record_provenance("daily_features", pk, metadata)
     return len(rows)
 
