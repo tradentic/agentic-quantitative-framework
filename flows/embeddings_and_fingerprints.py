@@ -289,7 +289,7 @@ def upsert_fingerprint_rows(
     ]
     response = (
         client.table(table_name)
-        .upsert(payload, on_conflict="signal_name,version,asset_symbol,window_start,window_end")
+        .upsert(payload, on_conflict="asset_symbol,window_start,window_end,version")
         .execute()
     )
     data = getattr(response, "data", None)
