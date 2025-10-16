@@ -1,0 +1,123 @@
+{
+  "repo": {
+    "name": "agentic-quantitative-framework",
+    "branch": "work",
+    "sha": "85552ab"
+  },
+  "capabilities": {
+    "vector_store": "partial",
+    "ts2vec": "partial",
+    "minirocket": "partial",
+    "deeplob": "partial",
+    "microstructure": "present",
+    "vpin": "present",
+    "matrix_profile": "present",
+    "change_points": "present",
+    "hawkes": "present",
+    "backtests": "partial",
+    "similarity_scans": "partial",
+    "use_case_glue": "partial",
+    "provenance": "partial",
+    "idempotency": "partial"
+  },
+  "features": [
+    {
+      "module": "features/matrix_profile.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": "compute_matrix_profile_metrics executed on synthetic series"
+    },
+    {
+      "module": "features/change_points.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": "change_point_scores PELT implementation passed smoke"
+    },
+    {
+      "module": "features/hawkes_features.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": "hawkes_self_excitation_metrics returned branching ratios"
+    },
+    {
+      "module": "features/microstructure.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": "OFI/spread metrics emitted QC-passing rows"
+    },
+    {
+      "module": "features/vpin.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": null,
+      "notes": "compute_vpin produced VPIN for synthetic trades"
+    },
+    {
+      "module": "features/generate_ts2vec_embeddings.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": 128,
+      "notes": "Fallback identity embeddings due to missing ts2vec"
+    },
+    {
+      "module": "features/minirocket_embeddings.py",
+      "present": true,
+      "imports_ok": false,
+      "emb_dim": null,
+      "notes": "DependencyUnavailable: sktime not installed"
+    },
+    {
+      "module": "features/deeplob_embeddings.py",
+      "present": true,
+      "imports_ok": false,
+      "emb_dim": 128,
+      "notes": "DependencyUnavailable: torch/weights absent"
+    },
+    {
+      "module": "features/pca_fingerprint.py",
+      "present": true,
+      "imports_ok": true,
+      "emb_dim": 128,
+      "notes": "Requires persisted PCA artifact for projection"
+    }
+  ],
+  "flows": [
+    {"path": "flows/compute_offexchange_features.py", "entrypoints": ["compute_offexchange_features"], "deployed": false},
+    {"path": "flows/compute_intraday_features.py", "entrypoints": ["compute_intraday_features"], "deployed": false},
+    {"path": "flows/embeddings_and_fingerprints.py", "entrypoints": ["fingerprint_vectorization"], "deployed": false},
+    {"path": "flows/embedding_flow.py", "entrypoints": ["supabase_embedding_refresh"], "deployed": false},
+    {"path": "flows/ingest_sec_form4.py", "entrypoints": ["ingest_form4"], "deployed": false},
+    {"path": "flows/backtest_flow.py", "entrypoints": ["scheduled_backtest_runner"], "deployed": false},
+    {"path": "flows/backtest.py", "entrypoints": ["insider_prefiling_backtest"], "deployed": false},
+    {"path": "flows/prune_flow.py", "entrypoints": ["scheduled_vector_prune"], "deployed": false},
+    {"path": "flows/similarity_scans.py", "entrypoints": ["similarity_scan_flow"], "deployed": false}
+  ],
+  "db": {
+    "pgvector": true,
+    "tables": [
+      {"name": "signal_embeddings", "present": true, "columns": ["id", "asset_symbol", "time_range", "embedding", "meta"]},
+      {"name": "signal_embeddings_archive", "present": true, "columns": ["id", "asset_symbol", "time_range", "embedding"]},
+      {"name": "feature_registry", "present": true, "columns": ["feature_id", "name", "version", "file_path", "metadata"]},
+      {"name": "backtest_results", "present": true, "columns": ["id", "strategy_id", "run_at", "config", "metrics"]},
+      {"name": "agent_state", "present": true, "columns": ["agent_id", "state", "updated_at"]},
+      {"name": "embedding_jobs", "present": true, "columns": ["id", "asset_symbol", "windows", "status"]},
+      {"name": "edgar_filings", "present": true, "columns": ["filing_id", "cik", "form_type", "accession_number", "provenance"]},
+      {"name": "insider_transactions", "present": true, "columns": ["transaction_id", "accession_number", "transaction_date", "symbol", "transaction_code"]},
+      {"name": "daily_features", "present": true, "columns": ["feature_id", "symbol", "trade_date", "short_vol_share", "feature_version", "provenance"]},
+      {"name": "signal_fingerprints", "present": true, "columns": ["id", "signal_name", "version", "asset_symbol", "fingerprint"]},
+      {"name": "text_chunks", "present": true, "columns": ["chunk_id", "filing_id", "chunk", "embedding"]}
+    ],
+    "issues": ["Missing provenance_events table"]
+  },
+  "questions": [
+    "Supply Supabase credentials or confirm local .env configuration for Supabase client",
+    "Share FINRA/Polygon/SEC throttling credentials for feature pipelines",
+    "Clarify availability of TS2Vec, sktime, torch weights for embedding modules",
+    "Provide sample similarity scan query payloads",
+    "Decide on PCA artifact distribution strategy"
+  ]
+}
