@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from agents.langgraph_chain import AgentState, build_langgraph_chain
 
@@ -14,9 +14,9 @@ class UseCaseRequest:
     """Canonical payload that is fed into the LangGraph agent."""
 
     intent: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     model: str | None = None
-    messages: List[Any] = field(default_factory=list)
+    messages: list[Any] = field(default_factory=list)
 
 
 @dataclass

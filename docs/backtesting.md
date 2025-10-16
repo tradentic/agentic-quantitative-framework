@@ -1,32 +1,36 @@
 ---
 id: backtesting
 title: Backtesting & Evaluation
-description: How Supabase RPCs and LangGraph agents coordinate strategy evaluation.
+description: How Prefect flows, Supabase storage, and LangGraph agents coordinate strategy evaluation.
 ---
 
 ## Backtest Lifecycle
 
 1. **Payload construction** – Use cases assemble a payload describing the asset universe, hyperparameters, and evaluation window.
-2. **Agent invocation** – `run_backtest()` is called via the LangGraph chain, forwarding the payload to the Supabase RPC `run_strategy_backtest`.
-3. **Computation** – The RPC launches a stored procedure, Edge Function, or external worker that executes vectorbt/NumPy-based simulations.
-4. **Result storage** – Metrics are persisted to Supabase tables such as `backtest_runs` and `strategy_metrics`. Agents record the RPC response for immediate feedback.
+2. **Agent invocation** – `run_backtest()` is called via the LangGraph chain or Prefect `scheduled-backtest-runner` flow. The tool
+   executes `backtest/engine.py` locally and computes Sharpe, drawdown, and annualized return metrics.
+3. **Artifact persistence** – Summaries are uploaded to Supabase storage (`backtests/<strategy>/<timestamp>/summary.json`) and
+   plots (equity curves) are pushed alongside them. Each run inserts a row into the `backtest_results` table via
+   `framework.supabase_client.insert_backtest_result`.
+4. **Supabase visibility** – Requests originate from the `backtest_requests` table or from real-time triggers. Prefect updates the
+   table when jobs finish so dashboards can reflect the latest status.
 
 ## Designing Backtests
 
-- Keep raw market data in Supabase to allow SQL-based slicing and labeling.
-- Pre-compute embeddings using `features/` modules so backtests can combine relational filters with vector similarity search.
-- Store configuration metadata (hyperparameters, feature sets) alongside each run for reproducibility.
+- Keep raw market data in Supabase tables so runs can align vector similarity searches with relational filters.
+- Version configs and feature bundles in Supabase `feature_registry` to tie proposals directly to evaluation runs.
+- Store configuration metadata (hyperparameters, feature sets) alongside each run for reproducibility and auditability.
 
 ## Automating Evaluations
 
-Supabase cron jobs or GitHub Actions can call Edge Functions that publish events to the LangGraph planner. Typical automations include:
+The Prefect deployment `scheduled-backtest-runner` polls `backtest_requests` for new work. Common triggers include:
 
-- **Rolling evaluation** – Weekly replays of the last N days to monitor drift.
-- **Trigger-based runs** – Launching a backtest when new embeddings arrive or when live metrics deteriorate.
-- **Comparative studies** – Running multiple parameter grids and storing results under a shared experiment ID.
+- **Rolling evaluation** – Nightly replays of the last N days to monitor drift.
+- **Trigger-based runs** – Launch a backtest when new embeddings arrive (`rpc_refresh_embeddings`) or when live metrics degrade.
+- **Comparative studies** – Running multiple parameter grids and storing results under a shared experiment ID in Supabase.
 
 ## Reading Results
 
-The RPC response contains the Supabase job identifier, enabling agents to poll for completion or fetch metrics via `client.table("backtest_runs").select().eq("job_id", ...)`.
-
-Agents can summarize outcomes (Sharpe, drawdown, hit rate) and decide whether to refresh embeddings, prune vectors, or propose new features.
+The backtest tool returns a structured dictionary with metric summaries and Supabase storage paths. Agents, notebooks, or Prefect
+flows can follow up by querying `backtest_results` for the `strategy_id` and timestamp or by downloading artifacts from storage to
+re-plot curves.

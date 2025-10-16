@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[tests]
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Mypy
+        run: mypy agents/langgraph_chain.py agents/tools.py features flows framework backtest
+
+      - name: Import LangGraph chain
+        run: python -c "from agents.langgraph_chain import build_langgraph_chain; build_langgraph_chain()"
+
+      - name: Pytest
+        run: pytest
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack (pnpm)
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      - name: Scaffold temporary Docusaurus workspace
+        run: |
+          pnpm dlx create-docusaurus@latest website classic --typescript --skip-install
+
+      - name: Install Docusaurus dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Sync repository docs
+        run: |
+          mkdir -p website/docs
+          rsync -a --delete docs/ website/docs/
+          if [ -f docs/docusaurus.config.ts ]; then cp docs/docusaurus.config.ts website/docusaurus.config.ts; fi
+          if [ -f docs/sidebars.ts ]; then cp docs/sidebars.ts website/sidebars.ts; fi
+          if [ -d docs/static ]; then rsync -a --delete docs/static/ website/static/; fi
+          if [ -d docs/src ]; then rsync -a docs/src/ website/src/; fi
+
+      - name: Build Docusaurus
+        working-directory: website
+        run: pnpm run build

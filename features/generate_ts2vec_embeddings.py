@@ -2,63 +2,99 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 from importlib import import_module, util
-from typing import Any, Dict, Iterable, Sequence
+from typing import Any
 
 import numpy as np
-import pandas as pd
-
-from agents.tools import batch_upsert_embeddings
-from framework.supabase_client import build_metadata
+from framework.supabase_client import EmbeddingRecord
 
 
 def _load_ts2vec() -> Any:
     if util.find_spec("ts2vec") is None:
-        raise ModuleNotFoundError("TS2Vec is required for embedding generation. Install it with `pip install ts2vec`.")
+        raise ModuleNotFoundError(
+            "TS2Vec is required for embedding generation. Install it with `pip install ts2vec`."
+        )
     module = import_module("ts2vec")
-    return getattr(module, "TS2Vec")
+    return module.TS2Vec
 
 
-def _prepare_embedding_records(
-    embedding_matrix: np.ndarray,
-    asset_id: str,
-    window_timestamps: Sequence[pd.Timestamp],
-    metadata: Dict[str, Any] | None = None,
-) -> Iterable[Dict[str, Any]]:
-    base_metadata = build_metadata(metadata)
-    for vector, timestamp in zip(embedding_matrix, window_timestamps):
-        yield {
-            "asset_id": asset_id,
-            "observed_at": timestamp.isoformat(),
-            "embedding": vector.tolist(),
-            "metadata": base_metadata,
-        }
+def _validate_inputs(
+    timestamps: Sequence[datetime],
+    values: np.ndarray,
+) -> None:
+    if not isinstance(values, np.ndarray):
+        raise TypeError("`values` must be a numpy ndarray.")
+    if values.ndim != 2:
+        raise ValueError("`values` must be a 2D array of shape (windows, features).")
+    if len(timestamps) != values.shape[0]:
+        raise ValueError("Timestamp count must match the number of windows in `values`.")
+
+
+def _format_time_range(timestamp: datetime, window_seconds: int) -> tuple[datetime, datetime]:
+    delta = timedelta(seconds=window_seconds or 60)
+    return timestamp, timestamp + delta
 
 
 def generate_ts2vec_features(
-    time_series: pd.DataFrame,
-    asset_id: str,
     *,
-    metadata: Dict[str, Any] | None = None,
-    epochs: int = 20,
-) -> np.ndarray:
-    """Create TS2Vec embeddings and push them to Supabase pgvector storage."""
+    timestamps: Sequence[datetime],
+    values: np.ndarray,
+    asset_symbol: str,
+    metadata: dict[str, Any] | None = None,
+    regime_tag: str | None = None,
+    window_seconds: int = 60,
+) -> list[dict[str, Any]]:
+    """Create TS2Vec embeddings and return structured rows for pgvector storage."""
 
-    if not isinstance(time_series, pd.DataFrame):
-        raise TypeError("`time_series` must be a pandas DataFrame with datetime index.")
-    if not isinstance(time_series.index, pd.DatetimeIndex):
-        raise TypeError("`time_series` requires a DatetimeIndex to timestamp embeddings.")
+    _validate_inputs(timestamps, values)
 
-    ts2vec_cls = _load_ts2vec()
-    encoder = ts2vec_cls(input_dims=time_series.shape[1])
-    embeddings = encoder.fit_transform(time_series.values, n_epochs=epochs)
+    try:
+        ts2vec_cls = _load_ts2vec()
+    except ModuleNotFoundError:
+        return fallback_identity_embeddings(
+            timestamps=timestamps,
+            values=values,
+            asset_symbol=asset_symbol,
+        )
 
-    records = _prepare_embedding_records(
-        embeddings,
-        asset_id,
-        time_series.index.to_pydatetime(),
-        metadata={**(metadata or {}), "generated_at": datetime.utcnow().isoformat()},
-    )
-    batch_upsert_embeddings(records)
-    return embeddings
+    encoder = ts2vec_cls(input_dims=values.shape[1])
+    embeddings = encoder.fit_transform(values)
+
+    base_meta = {**(metadata or {}), "generated_at": datetime.utcnow().isoformat()}
+    rows: list[dict[str, Any]] = []
+    for vector, timestamp in zip(embeddings, timestamps, strict=False):
+        record = EmbeddingRecord(
+            asset_symbol=asset_symbol,
+            time_range=_format_time_range(timestamp, window_seconds),
+            embedding=vector.tolist(),
+            regime_tag=regime_tag,
+            label=base_meta.get("label", {}),
+            meta={k: v for k, v in base_meta.items() if k != "label"},
+        )
+        rows.append(record.dict())
+    return rows
+
+
+def fallback_identity_embeddings(
+    *, timestamps: Sequence[datetime], values: np.ndarray, asset_symbol: str
+) -> list[dict[str, Any]]:
+    """Fallback helper that emits identity embeddings when TS2Vec is unavailable."""
+
+    rows: list[dict[str, Any]] = []
+    for idx, timestamp in enumerate(timestamps):
+        vector = np.pad(values[idx], (0, max(0, 128 - values.shape[1])), mode="constant")[:128]
+        record = EmbeddingRecord(
+            asset_symbol=asset_symbol,
+            time_range=_format_time_range(timestamp, 60),
+            embedding=vector.tolist(),
+        )
+        rows.append(record.dict())
+    return rows
+
+
+__all__ = [
+    "fallback_identity_embeddings",
+    "generate_ts2vec_features",
+]

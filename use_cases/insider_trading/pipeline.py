@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from use_cases.base import StrategyUseCase, UseCaseRequest
 
@@ -13,15 +13,17 @@ class InsiderTradingUseCase(StrategyUseCase):
     """Agent wiring for insider trading anomaly detection."""
 
     name: str = "insider_trading"
-    description: str = "Detect anomalous trades around insider filings using Supabase-backed agents."
+    description: str = (
+        "Detect anomalous trades around insider filings using Supabase-backed agents."
+    )
 
     def build_request(
         self,
         *,
         symbol: str,
         hypothesis: str,
-        feature_candidates: List[Dict[str, Any]],
-        backtest_window: Dict[str, Any],
+        feature_candidates: list[dict[str, Any]],
+        backtest_window: dict[str, Any],
     ) -> UseCaseRequest:
         payload = {
             "name": f"{symbol}-insider-anomaly",
