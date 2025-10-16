@@ -20,6 +20,21 @@ make dev
 
 > The `make dev` target provisions `.venv` and installs the editable package along with lint/type-check tooling.
 
+If you prefer to bootstrap the environment manually, the following commands mirror what the automation performs:
+
+```bash
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your Supabase keys and project reference
+# Populate `.env.local` files from the Supabase CLI status output
+node .devcontainer/scripts/sync-supabase-env.mjs
+
+# Create Python virtual environment
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## 2. Supabase Local Stack
 
 Start the full Supabase stack (Postgres + auth + storage) locally:

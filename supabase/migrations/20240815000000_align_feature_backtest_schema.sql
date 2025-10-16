@@ -82,19 +82,5 @@ ALTER TABLE public.backtest_results
     ALTER COLUMN artifacts SET DEFAULT '{}'::jsonb,
     ALTER COLUMN artifacts SET NOT NULL;
 
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM pg_indexes
-        WHERE schemaname = 'public'
-          AND indexname = 'backtest_results_strategy_idx'
-    ) THEN
-        DROP INDEX public.backtest_results_strategy_idx;
-    END IF;
-END$$;
-
 ALTER TABLE public.backtest_results
-    DROP COLUMN IF EXISTS artifacts_path,
-    DROP COLUMN IF EXISTS strategy_id,
-    DROP COLUMN IF EXISTS run_at;
+    DROP COLUMN IF EXISTS artifacts_path;
