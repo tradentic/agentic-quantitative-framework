@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import importlib
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -20,16 +18,18 @@ def _reload_module():
     return importlib.reload(importlib.import_module("features.minirocket_embeddings"))
 
 
-def test_missing_dependency_error(monkeypatch: pytest.MonkeyPatch):
+def test_missing_dependency_error(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _reload_module()
 
-    def fake_import():
-        raise ModuleNotFoundError("mock missing")
+    monkeypatch.setattr(module, "SKTIME_AVAILABLE", False)
+    monkeypatch.setattr(module, "_MiniRocket", None)
+    monkeypatch.setattr(module, "_to_nested", None)
+    monkeypatch.setattr(module, "IMPORT_ERR", ModuleNotFoundError("mock missing"))
 
-    monkeypatch.setattr(module, "_import_sktime", fake_import)
-    with pytest.raises(ModuleNotFoundError) as exc:
+    with pytest.raises(module.DependencyUnavailable) as exc:
         module.generate_minirocket_embeddings(np.ones((1, 4)))
-    assert "sktime" in str(exc.value)
+
+    assert "sktime/MiniRocket not installed" in str(exc.value)
 
 
 sktime = pytest.importorskip("sktime", reason="sktime optional dependency required for MiniRocket tests")
