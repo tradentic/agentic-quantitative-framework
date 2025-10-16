@@ -16,7 +16,7 @@ description: Deploying Supabase-first agents, Prefect flows, and documentation.
 ## Deployment Steps
 
 1. **Migrate** – Use `supabase db push` to apply schema changes, triggers, and RPC updates (including `rpc_refresh_embeddings`
-   and `rpc_prune_vectors`).
+   and `rpc_prune_vectors`). For local resets, run `supabase db reset --local` to replay every migration and seed file.
 2. **Build agents** – Package the Python runtime with `pyproject.toml` dependencies, ensuring environment variables (`SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`) are provided.
 3. **Configure Prefect** – Start Prefect locally (`prefect server start`), then register deployments via `prefect deployment apply

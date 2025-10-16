@@ -77,7 +77,8 @@ def propose_new_feature(feature_payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "action": "propose_new_feature",
         "file_path": str(feature_path),
-        "registry_entry": registry_entry,
+        "created_files": [str(feature_path)],
+        "result": registry_entry,
     }
 
 
@@ -178,13 +179,14 @@ def refresh_vector_store(refresh_payload: dict[str, Any]) -> dict[str, Any]:
         asset_symbol=asset_symbol,
         metadata=metadata,
     )
-    insert_embeddings(records)
+    response = insert_embeddings(records)
 
     return {
         "action": "refresh_vector_store",
         "result": {
             "asset_symbol": asset_symbol,
             "rows": len(records),
+            "supabase_response": response,
         },
     }
 

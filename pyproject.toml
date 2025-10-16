@@ -10,6 +10,7 @@ authors = [{ name = "Agentic Quantitative Framework" }]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "langchain-core>=0.1.42",
     "langgraph>=0.0.50",
     "openai>=1.0.0",
     "pydantic>=2.7.0",
@@ -53,6 +54,7 @@ ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
 packages = ["agents", "features", "framework", "flows", "backtest"]
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"

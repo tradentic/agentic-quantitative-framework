@@ -17,14 +17,11 @@ class InsiderTradingUseCase(StrategyUseCase):
         "Detect anomalous trades around insider filings using Supabase-backed agents."
     )
 
-    def build_request(
-        self,
-        *,
-        symbol: str,
-        hypothesis: str,
-        feature_candidates: list[dict[str, Any]],
-        backtest_window: dict[str, Any],
-    ) -> UseCaseRequest:
+    def build_request(self, **kwargs: Any) -> UseCaseRequest:
+        symbol = kwargs.get("symbol", "")
+        hypothesis = kwargs.get("hypothesis", "")
+        feature_candidates = kwargs.get("feature_candidates", [])
+        backtest_window = kwargs.get("backtest_window", {})
         payload = {
             "name": f"{symbol}-insider-anomaly",
             "description": hypothesis,

@@ -198,7 +198,12 @@ def record_feature(
     payload = entry.as_dict() if isinstance(entry, FeatureRegistryEntry) else entry
     client = get_supabase_client()
     response = client.table("feature_registry").upsert(payload).execute()
-    return getattr(response, "data", payload)
+    data = getattr(response, "data", None)
+    if isinstance(data, list):
+        return [dict(row) for row in data]
+    if isinstance(data, dict):
+        return dict(data)
+    return payload
 
 
 def store_artifact_json(path: str, content: dict[str, Any], *, bucket: str | None = None) -> str:

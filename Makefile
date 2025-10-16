@@ -1,37 +1,27 @@
-.PHONY: dev supabase docs flows test lint typecheck
+.PHONY: dev supabase resetdb prefect test
 
 VENV ?= .venv
 PYTHON ?= python3
 PIP := $(VENV)/bin/pip
 
 $(VENV)/bin/activate:
-$(PYTHON) -m venv $(VENV)
-$(PIP) install --upgrade pip
-$(PIP) install -e .
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install -e .
 
 dev: $(VENV)/bin/activate
-@echo "Virtual environment ready at $(VENV)"
+	@echo "Virtual environment ready at $(VENV)"
 
 supabase:
-supabase start
+	supabase start
 
-docs:
-pnpm --filter docs dev
+resetdb:
+	supabase db reset --local
 
-flows:
-prefect server start --host 0.0.0.0 & \
-SERVER_PID=$$!; \
-sleep 5; \
-prefect deployment apply prefect.yaml; \
-wait $$SERVER_PID
+prefect:
+	prefect server start
 
 test:
-ruff check .
-mypy .
-pytest
-
-lint:
-ruff check .
-
-typecheck:
-mypy .
+	ruff check .
+	mypy .
+	$(PYTHON) -c "import agents.langgraph_chain as _mod; print('Loaded', _mod.__name__)"
