@@ -47,6 +47,60 @@ pnpm build && pnpm test:smoke && pnpm test:a11y
 
 ---
 
+## Validate Embeddings — PCA fingerprint width
+
+**File:** `.github/workflows/ci-validate-embeddings.yml`
+**Triggers:** push to `main`, pull_request
+
+**What it runs**
+
+* `pip install .`
+* `python scripts/audit_vector_dims.py`
+
+The audit loads the persisted PCA reducer (if present) and inspects rows in `signal_fingerprints` via Supabase. Any vector that does not match the expected 128 components causes the workflow to fail.
+
+**Run locally**
+
+```bash
+python -m pip install --upgrade pip
+pip install .
+python scripts/audit_vector_dims.py
+```
+
+**Common failures**
+
+* PCA artifact missing → run `features/pca_fingerprint.py::fit_and_persist_pca`
+* Supabase rows with incorrect width → recompute fingerprints before merging
+
+---
+
+## Validate Prefect Entrypoints — Deployment import smoke test
+
+**File:** `.github/workflows/ci-validate-prefect.yml`
+**Triggers:** push to `main`, pull_request
+
+**What it runs**
+
+* `pip install .[tests]`
+* `pytest tests/flows/test_entrypoints.py`
+
+The targeted pytest module loads `prefect.yaml`, imports each deployment entrypoint, and asserts the attribute resolves to a `prefect.Flow` with the expected name. This prevents drift between deployment metadata and the actual flow definitions.
+
+**Run locally**
+
+```bash
+python -m pip install --upgrade pip
+pip install .[tests]
+pytest tests/flows/test_entrypoints.py
+```
+
+**Common failures**
+
+* Entry point typo → fix the module path or attribute in `prefect.yaml`
+* Flow renamed without updating deployment metadata → align the `flow_name` field or flow object name
+
+---
+
 ## Drift Reconcile — Weekly refresh PR
 
 **File:** `.github/workflows/drift-reconcile.yml`
