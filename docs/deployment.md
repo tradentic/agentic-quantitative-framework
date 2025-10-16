@@ -6,7 +6,7 @@ description: Deploying Supabase-driven agent pipelines across environments.
 
 ## Environments
 
-- **Local** – Supabase CLI (`supabase start`) plus the `.devcontainer` ensures Python 3.11, Node.js 18, Supabase CLI, and LangGraph dependencies.
+- **Local** – Supabase CLI (`supabase start`) plus the `.devcontainer` ensures Python 3.11, Node.js 24, Supabase CLI, and LangGraph dependencies.
 - **Staging** – Hosted Supabase project mirroring local schema. Edge Functions invoke the same Python agents using container images built from this repository.
 - **Production** – Supabase managed Postgres with observability enabled; workers run on Kubernetes or serverless platforms and subscribe to Supabase realtime events.
 

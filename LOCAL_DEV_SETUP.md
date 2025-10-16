@@ -6,7 +6,7 @@ This project is fully compatible with local-first development using the `supabas
 - Docker installed
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase`)
 - Python 3.11+
-- Node.js 18+
+- Node.js 24+
 - Poetry or pip for Python dependency management
 
 ## Setup Steps
