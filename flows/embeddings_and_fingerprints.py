@@ -284,6 +284,16 @@ def upsert_fingerprint_rows(
 
     if not rows:
         return []
+
+    required_conflict_keys = {"asset_symbol", "window_start", "window_end", "version"}
+    for row in rows:
+        missing_keys = required_conflict_keys.difference(row)
+        if missing_keys:
+            raise ValueError(
+                "Fingerprint rows must include %s for idempotent upserts; missing %s"
+                % (", ".join(sorted(required_conflict_keys)), ", ".join(sorted(missing_keys)))
+            )
+
     try:
         client = get_supabase_client()
     except MissingSupabaseConfiguration:

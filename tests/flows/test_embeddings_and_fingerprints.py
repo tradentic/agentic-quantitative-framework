@@ -216,6 +216,22 @@ def test_upsert_fingerprint_rows_uses_conflict_key(
     assert "table" not in captured["rows"][0]
 
 
+def test_upsert_fingerprint_rows_requires_conflict_columns() -> None:
+    rows = [
+        {
+            "signal_name": "demo",
+            "asset_symbol": "ACME",
+            "window_start": "2024-01-01",
+            "fingerprint": [0.1, 0.2, 0.3],
+            "provenance": {"source_url": ["unit"], "feature_version": "demo"},
+            "meta": {},
+        }
+    ]
+
+    with pytest.raises(ValueError, match="idempotent upserts"):
+        upsert_fingerprint_rows(rows)
+
+
 def test_fingerprint_vectorization_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     class _StubFuture:
         def __init__(self, value: Any):
