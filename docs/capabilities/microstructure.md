@@ -17,6 +17,7 @@
 - Amihud ILLIQ ratio (`amihud_illiq`).
 - Absolute/relative spreads (`spreads`).
 - All functions return one row per `(symbol, date, window)` with numeric fields plus `_qc_pass` booleans.
+- Schema, dtypes, and unit hints are defined in the [feature data contract](../specs/FEATURE_CONTRACTS.md#microstructure-features).
 
 ## Configuration & Usage Notes
 - Ensure timestamps are timezone-aware or consistent across trades and quotes before calling the functions.

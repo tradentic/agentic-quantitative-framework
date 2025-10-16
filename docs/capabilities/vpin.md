@@ -6,7 +6,7 @@
 
 ## Inputs / Outputs
 - **Inputs**: Trade prints with `symbol`, `date`, `window`, `timestamp`, `price`, and `size` columns.
-- **Outputs**: Aggregated frame containing `vpin`, `vpin_change`, `vpin_obs`, and `vpin_qc_pass` per `(symbol, date, window)` grouping.
+- **Outputs**: Aggregated frame containing `vpin`, `vpin_change`, `vpin_obs`, and `vpin_qc_pass` per `(symbol, date, window)` grouping. Column names, dtypes, and units are formalized in the [feature data contract](../specs/FEATURE_CONTRACTS.md#compute_vpin).
 
 ## Configs
 - `bucket_volume`: volume threshold for completing a VPIN bar (e.g., 50k shares).
