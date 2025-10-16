@@ -128,6 +128,7 @@ def run_backtest(backtest_config: dict[str, Any]) -> dict[str, Any]:
     }
 
     backtest_record = BacktestResult(
+        strategy_id=strategy,
         config=backtest_config,
         metrics=summary,
         artifacts=artifacts,

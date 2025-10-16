@@ -106,6 +106,7 @@ class BacktestResult(BaseModel):
     """Persisted backtest summary for analytics and auditability."""
 
     id: UUID = Field(default_factory=uuid4)
+    strategy_id: str
     config: dict[str, Any]
     metrics: dict[str, Any]
     artifacts: dict[str, Any] = Field(default_factory=dict)
