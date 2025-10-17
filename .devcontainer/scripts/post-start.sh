@@ -250,6 +250,24 @@ fi
 
 sync_supabase_env || true
 
+# Ensure Prefect defaults exist in .env.local so codespaces share a consistent port/config baseline
+prefect_env_initializer="${SCRIPT_DIR}/ensure-prefect-env.sh"
+prefect_env_defaults=(
+  "PREFECT_API_HOST_PORT=${PREFECT_API_HOST_PORT:-4200}"
+  "PREFECT_UI_API_URL=${PREFECT_UI_API_URL:-/api}"
+  "PREFECT_DOCKER_NETWORK=${PREFECT_DOCKER_NETWORK:-prefect-dev}"
+  "PREFECT_SERVER_CONTAINER_NAME=${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}"
+  "PREFECT_WORKER_CONTAINER_NAME=${PREFECT_WORKER_CONTAINER_NAME:-prefect-worker-dev}"
+  "PREFECT_WORK_POOL_NAME=${PREFECT_WORK_POOL_NAME:-my-docker-pool}"
+  "PREFECT_WORKER_TYPE=${PREFECT_WORKER_TYPE:-docker}"
+)
+
+if [[ -x "${prefect_env_initializer}" ]]; then
+  "${prefect_env_initializer}" "${env_file_target}" "${prefect_env_defaults[@]}"
+else
+  echo "[post-start] Prefect env initializer not executable: ${prefect_env_initializer}" >&2
+fi
+
 if [[ -f "${env_file_target}" ]]; then
   load_env_file "${env_file_target}"
 elif [[ -f "${REPO_ROOT}/.env" ]]; then
@@ -327,6 +345,7 @@ if [[ "${docker_available}" == "true" && "${prefect_cli_available}" == "true" ]]
       --name "${prefect_server_container}" \
       --network "${prefect_docker_network}" \
       --publish "${prefect_api_host_port}:4200" \
+      -e PREFECT_UI_API_URL="${prefect_ui_api_path}" \
       "${prefect_docker_image}" \
       prefect server start --host 0.0.0.0 --port 4200 >/dev/null 2>&1 || {
         echo "[post-start] Failed to launch Prefect server container." >&2
