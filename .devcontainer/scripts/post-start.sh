@@ -6,6 +6,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
+wait_for_docker_daemon() {
+  local max_attempts="${1:-30}"
+  local sleep_seconds="${2:-2}"
+  local attempt
+
+  for attempt in $(seq 1 "${max_attempts}"); do
+    if docker info >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if [[ "${attempt}" -eq 1 ]]; then
+      echo "[post-start] Waiting for Docker daemon to become ready..." >&2
+    fi
+
+    sleep "${sleep_seconds}"
+  done
+
+  return 1
+}
+
 detect_prefect_version() {
   local prefect_config
   prefect_config="${REPO_ROOT}/prefect.yaml"
@@ -31,25 +51,40 @@ PY
 }
 
 supabase_ready=false
+docker_cli_present=false
+docker_available=false
+
+if command -v docker >/dev/null 2>&1; then
+  docker_cli_present=true
+  if wait_for_docker_daemon 40 2; then
+    docker_available=true
+  else
+    echo "[post-start] Docker daemon did not become ready; Docker-dependent services will be skipped." >&2
+  fi
+fi
 
 if command -v supabase >/dev/null 2>&1; then
-  echo "[post-start] Checking Supabase local stack status..."
-  status_file="$(mktemp)"
-  if supabase status >"${status_file}" 2>&1; then
-    if grep -qi 'api url' "${status_file}"; then
-      echo "[post-start] Supabase services already running."
-      supabase_ready=true
+  if [[ "${docker_available}" == "true" ]]; then
+    echo "[post-start] Checking Supabase local stack status..."
+    status_file="$(mktemp)"
+    if supabase status >"${status_file}" 2>&1; then
+      if grep -qi 'api url' "${status_file}"; then
+        echo "[post-start] Supabase services already running."
+        supabase_ready=true
+      else
+        echo "[post-start] Supabase services not running; starting now..."
+        supabase start
+        supabase_ready=true
+      fi
     else
-      echo "[post-start] Supabase services not running; starting now..."
+      echo "[post-start] Supabase status check failed; attempting to start services..." >&2
       supabase start
       supabase_ready=true
     fi
+    rm -f "${status_file}"
   else
-    echo "[post-start] Supabase status check failed; attempting to start services..." >&2
-    supabase start
-    supabase_ready=true
+    echo "[post-start] Docker unavailable; skipping Supabase startup." >&2
   fi
-  rm -f "${status_file}"
 else
   echo "[post-start] Supabase CLI not found on PATH; skipping Supabase startup." >&2
 fi
@@ -86,10 +121,8 @@ else
   echo "[post-start] Prefect CLI not found on PATH; skipping Prefect configuration." >&2
 fi
 
-docker_available=false
-if command -v docker >/dev/null 2>&1; then
-  if docker info >/dev/null 2>&1; then
-    docker_available=true
+if [[ "${docker_cli_present}" == "true" ]]; then
+  if [[ "${docker_available}" == "true" ]]; then
     echo "[post-start] Prefect Docker image target: '${prefect_docker_image}'."
     if ! docker image inspect "${prefect_docker_image}" >/dev/null 2>&1; then
       echo "[post-start] Pulling Prefect base image '${prefect_docker_image}' for worker + job runs..."
