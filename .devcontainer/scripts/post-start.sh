@@ -37,7 +37,7 @@ prefect_api_default="http://127.0.0.1:${prefect_api_host_port}/api"
 prefect_base_url="${prefect_api_default%/api}"
 prefect_health_url="${prefect_api_default%/}/health"
 prefect_ui_api_path="/api"
-prefect_pool_name="${PREFECT_WORK_POOL_NAME:-local-agent}"
+prefect_pool_name="${PREFECT_WORK_POOL_NAME:-my-docker-pool}"
 prefect_worker_type="${PREFECT_WORKER_TYPE:-docker}"
 prefect_docker_network="${PREFECT_DOCKER_NETWORK:-prefect-dev}"
 prefect_server_container="${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}" 
@@ -54,6 +54,12 @@ docker_available=false
 if command -v docker >/dev/null 2>&1; then
   if docker info >/dev/null 2>&1; then
     docker_available=true
+    if ! docker image inspect "${prefect_docker_image}" >/dev/null 2>&1; then
+      echo "[post-start] Pulling Prefect base image '${prefect_docker_image}' for worker + job runs..."
+      if ! docker pull "${prefect_docker_image}" >/dev/null 2>&1; then
+        echo "[post-start] Failed to pull image '${prefect_docker_image}'." >&2
+      fi
+    fi
   else
     echo "[post-start] Docker is installed but not available (docker info failed)." >&2
   fi
@@ -117,7 +123,7 @@ if [[ "${prefect_ready}" == "true" && "${prefect_cli_available}" == "true" ]]; t
     fi
   fi
 
-  echo "[post-start] Deploying Prefect flows from prefect.yaml..."
+  echo "[post-start] Deploying Prefect flows from prefect.yaml (Docker work pool)..."
   if PREFECT_CLI_PROMPT=false prefect deploy --all >/dev/null 2>&1; then
     echo "[post-start] Prefect deployments are up to date."
   else
