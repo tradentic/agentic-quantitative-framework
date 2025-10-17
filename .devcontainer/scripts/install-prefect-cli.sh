@@ -87,6 +87,24 @@ install_prefect() {
   pipx install --force "$package"
 }
 
+install_prefect_plugins() {
+  local plugins=()
+
+  if [[ "${INSTALL_PREFECT_DOCKER_PLUGIN:-true}" == "true" ]]; then
+    plugins+=("prefect-docker")
+  fi
+
+  if ((${#plugins[@]} == 0)); then
+    return 0
+  fi
+
+  echo "[install-prefect-cli] Injecting Prefect plugins: ${plugins[*]}"
+  if ! pipx inject --include-apps prefect "${plugins[@]}"; then
+    echo "[install-prefect-cli] Failed to inject Prefect plugins (${plugins[*]})." >&2
+    return 1
+  fi
+}
+
 main() {
   install_packages
 
@@ -107,6 +125,8 @@ main() {
   fi
 
   install_prefect "$resolved_version" "$requested_version"
+
+  install_prefect_plugins || true
 
   if command -v prefect >/dev/null 2>&1; then
     echo -n "[install-prefect-cli] Installed Prefect CLI version: "

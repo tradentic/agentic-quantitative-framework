@@ -9,7 +9,7 @@ All devcontainer scripts live under `.devcontainer/scripts/`. Additional optiona
 | `post-create.sh` | One‑time container setup. Enables Corepack/PNPM, runs `pnpm install` if `package.json` exists, installs Supabase CLI, Codex CLI, and Claude Code CLI. |
 | `post-start.sh` | On container start: ensure Supabase is running, pull the Prefect Docker image that matches `prefect.yaml`, run Prefect server + docker work pool/worker containers, sync `.env.local` via `sync-supabase-env.mjs`. |
 | `install-supabase-cli.sh` | Robust installer for Supabase CLI (latest or `SUPABASE_VERSION`). |
-| `install-prefect-cli.sh` | Installs Prefect CLI via `pipx` (latest or `PREFECT_VERSION`). |
+| `install-prefect-cli.sh` | Installs Prefect CLI via `pipx` (latest or `PREFECT_VERSION`) and injects the `prefect-docker` plugin so Docker workers have a base job template. |
 | `install-codex-cli.sh` | Install OpenAI **Codex** CLI globally via **pnpm**. |
 | `install-claude-code-cli.sh` | Install Anthropic **Claude Code** CLI globally via **pnpm**. |
 | `sync-supabase-env.mjs` | Parses `supabase status` output and writes `.env.local` (prefers Publishable/Secret, backfills Anon/Service Role). |

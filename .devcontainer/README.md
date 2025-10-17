@@ -18,7 +18,7 @@ A portable Codespaces/devcontainer that readies a **Supabase-first** environment
   * Enables corepack/pnpm
   * Installs deps **only if** `package.json` exists
   * Installs **Supabase CLI**
-  * Installs **Prefect CLI** via `pipx`
+  * Installs **Prefect CLI** via `pipx` and injects the **`prefect-docker`** plugin so Docker work pools ship with a ready base job template
   * Installs **OpenAI Codex CLI** via **pnpm global** (no npm/brew)
   * *(Optional, if enabled in the script)* Installs **Anthropic Claude Code CLI** via **pnpm global**
 
