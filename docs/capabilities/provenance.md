@@ -43,5 +43,5 @@ python -m flows.compute_offexchange_features --date 2024-05-01
 ## Validation Checks
 
 * `framework.provenance.hash_bytes` asserts inputs are byte-like and aligns with `hashlib` digests.
-* `framework.provenance.record_provenance` sanitizes metadata into JSON-friendly payloads and upserts with the `table_name,record_id` composite key.
+* `framework.provenance.record_provenance` sanitizes metadata into JSON-friendly payloads and inserts log rows containing the source identifier, optional parser/version fields, and a JSONB `payload` envelope with the record identifier and metadata snapshot.
 * Unit coverage lives in `tests/framework/test_provenance.py` and ensures Supabase failures are handled gracefully.
