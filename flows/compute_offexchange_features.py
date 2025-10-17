@@ -12,6 +12,7 @@ from prefect import flow, get_run_logger, task
 from framework.finra_client import FINRA_SHORT_VOLUME_MARKET, get_ats_week, get_short_volume
 from framework.provenance import OFFEX_FEATURE_VERSION, hash_bytes, record_provenance
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.guards import SkipStep, retry_on_timeout
 
 
 FINRA_BASE_URL = os.getenv("FINRA_BASE_URL", "https://cdn.finra.org/equity")
@@ -30,18 +31,9 @@ def _normalize_symbols(symbols: Iterable[str]) -> list[str]:
     return sorted(unique)
 
 
-@task
-def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = None) -> list[str]:
-    logger = get_run_logger()
-    if symbols:
-        normalized = _normalize_symbols(symbols)
-        logger.info("Using %d provided symbols for %s", len(normalized), trade_date)
-        return normalized
-    try:
-        client = get_supabase_client()
-    except MissingSupabaseConfiguration:
-        logger.warning("Supabase credentials missing; no symbols discovered for %s", trade_date)
-        return []
+@retry_on_timeout
+def _fetch_supabase_symbols(trade_date: date) -> Sequence[dict[str, object]]:
+    client = get_supabase_client()
     response = (
         client.table("daily_features")
         .select("symbol")
@@ -49,8 +41,28 @@ def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = Non
         .eq("feature_version", OFFEX_FEATURE_VERSION)
         .execute()
     )
-    data = getattr(response, "data", None) or []
-    normalized = _normalize_symbols(row.get("symbol", "") for row in data)
+    return getattr(response, "data", None) or []
+
+
+@task
+def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = None) -> list[str]:
+    logger = get_run_logger()
+    if symbols:
+        normalized = _normalize_symbols(symbols)
+        if not normalized:
+            logger.info("Provided symbol list was empty after normalization for %s", trade_date)
+            raise SkipStep("No symbols")
+        logger.info("Using %d provided symbols for %s", len(normalized), trade_date)
+        return normalized
+    try:
+        rows = _fetch_supabase_symbols(trade_date)
+    except MissingSupabaseConfiguration:
+        logger.warning("Supabase credentials missing; skipping symbol discovery for %s", trade_date)
+        raise SkipStep("Supabase credentials missing")
+    normalized = _normalize_symbols(row.get("symbol", "") for row in rows)
+    if not normalized:
+        logger.info("Supabase returned no symbols for %s", trade_date)
+        raise SkipStep("No symbols")
     logger.info("Fetched %d symbols from daily_features for %s", len(normalized), trade_date)
     return normalized
 
@@ -145,9 +157,6 @@ def compute_offexchange_features(
     logger = get_run_logger()
     symbol_future = load_candidate_symbols.submit(trade_date, symbols)
     candidate_symbols = symbol_future.result()
-    if not candidate_symbols:
-        logger.info("No candidate symbols for %s", trade_date)
-        return []
     week_end = _week_ending(trade_date)
     logger.info(
         "Computing off-exchange features for %d symbols on %s (week ending %s)",

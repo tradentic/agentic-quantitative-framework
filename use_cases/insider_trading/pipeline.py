@@ -17,6 +17,7 @@ from features.pca_fingerprint import PCA_COMPONENTS
 from framework.provenance import OFFEX_FEATURE_VERSION
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 from use_cases.base import StrategyUseCase, UseCaseRequest
+from utils.guards import SkipStep
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,11 @@ class PipelineStep:
     runner: Runner
 
     def execute(self, runtime: PipelineRuntime, options: Mapping[str, Any]) -> ModuleResult:
-        result = self.runner(runtime, dict(options))
+        try:
+            result = self.runner(runtime, dict(options))
+        except SkipStep as exc:
+            logger.info("Module %s skipped: %s", self.name, exc)
+            return {"status": "skipped", "reason": str(exc)}
         if not isinstance(result, dict):
             return {"status": "ok", "result": result}
         if "status" not in result:
