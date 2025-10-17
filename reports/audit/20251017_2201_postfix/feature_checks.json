@@ -1,0 +1,288 @@
+{
+  "matrix_profile": {
+    "module_doc": "Matrix Profile utilities for shape-based anomaly detection.\n\nThe behaviour of :func:`compute_matrix_profile_metrics` can be tuned via the\n``MATRIX_PROFILE_ENGINE`` environment variable. Supported values are\n\n``\"numba\"`` (default)\n    Uses :mod:`stumpy`'s accelerated implementation when available.\n\n``\"naive\"``\n    Forces the pure-Python fallback that avoids :mod:`stumpy` and NumPy's Numba\n    extensions. This mode is slower but safer on platforms where compiling\n    Numba-accelerated code is problematic.",
+    "naive": {
+      "discord_distance": 1.3319543071696534,
+      "primary_motif_distance": 0.030304945534876993,
+      "motif_counts": [
+        2,
+        2,
+        2
+      ],
+      "elapsed_ms": 138.55515099930926
+    },
+    "numba": {
+      "discord_distance": 2.732141342546872e-14,
+      "primary_motif_distance": 0.0,
+      "motif_counts": [],
+      "elapsed_ms": 13.70658599989838,
+      "engine_forced_naive": true
+    }
+  },
+  "change_points": {
+    "module_doc": "Utilities for detecting change-points in univariate time-series.\n\nThe module exposes a light-weight implementation of two popular detectors:\n\n* An offline segmentation routine based on the PELT dynamic programming\n  algorithm with an L2 cost (sum of squared errors) to detect level and\n  volatility breaks.\n* An optional Bayesian Online Change Point Detection (BOCPD) wrapper that\n  produces run-length conditioned probabilities for streaming contexts.\n\nThe goal is to keep the public API minimal while still returning the key\nartifacts required by downstream agents: break indices, level deltas, and a\nper-step score vector.",
+    "breakpoints": [
+      "40",
+      "80"
+    ],
+    "deltas": [
+      1.5,
+      -2.0
+    ],
+    "segment_means": [
+      1.0,
+      2.5,
+      0.5
+    ],
+    "score_series_preview": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "elapsed_ms": 8.255697997810785
+  },
+  "hawkes_features": {
+    "module_doc": "Hawkes process self-excitation metrics.",
+    "fit": {
+      "baseline": 1.889644787910461,
+      "amplitude": 0.14488168884821703,
+      "decay": 3.901121502635115,
+      "branching_ratio": 0.03713847127046745,
+      "log_likelihood": -16.93659104444163,
+      "converged": false
+    },
+    "elapsed_ms": 23.55673000056413
+  },
+  "microstructure": {
+    "module_doc": "Microstructure feature engineering utilities.",
+    "ofi": [
+      {
+        "symbol": "AAPL",
+        "date": "2024-01-02",
+        "window": "09:30",
+        "ofi": 1130.0,
+        "ofi_obs": 4,
+        "ofi_qc_pass": true
+      }
+    ],
+    "imbalance": [
+      {
+        "symbol": "AAPL",
+        "date": "2024-01-02",
+        "window": "09:30",
+        "book_imbalance": 0.17647058823529413,
+        "book_imbalance_obs": 4,
+        "book_imbalance_qc_pass": true
+      }
+    ],
+    "kyle_lambda": [
+      {
+        "symbol": "AAPL",
+        "date": "2024-01-02",
+        "window": "09:30",
+        "kyle_lambda": 0.0004666666666667159,
+        "kyle_lambda_obs": 4,
+        "kyle_lambda_qc_pass": true
+      }
+    ],
+    "amihud_illiq": [
+      {
+        "symbol": "AAPL",
+        "date": "2024-01-02",
+        "window": "09:30",
+        "amihud_illiq": 5.2373179248561636e-08,
+        "amihud_obs": 4,
+        "amihud_qc_pass": true
+      }
+    ],
+    "spreads": [
+      {
+        "symbol": "AAPL",
+        "date": "2024-01-02",
+        "window": "09:30",
+        "avg_spread": 0.20000000000000284,
+        "avg_rel_spread": 0.0019950149501763805,
+        "spreads_obs": 4,
+        "spreads_qc_pass": true
+      }
+    ],
+    "elapsed_ms": 23.3502139999473
+  },
+  "vpin": {
+    "module_doc": "VPIN (Volume-Synchronized Probability of Informed Trading) features.",
+    "result": [
+      {
+        "symbol": "AAPL",
+        "date": "2024-01-02",
+        "window": "09:30",
+        "vpin": 1.0,
+        "vpin_change": 0.25,
+        "vpin_obs": 5,
+        "vpin_qc_pass": true
+      }
+    ],
+    "elapsed_ms": 6.528830999741331
+  },
+  "ts2vec": {
+    "module_doc": "Feature generation utilities backed by Supabase pgvector.",
+    "row_example": {
+      "id": "0952ab75-3014-4ea7-a013-6dff1d6cd5c6",
+      "asset_symbol": "AAPL",
+      "time_range": "[2024-01-02T09:30:00,2024-01-02T09:31:00)",
+      "embedding": [
+        1.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "emb_type": "ts2vec",
+      "emb_version": "v1",
+      "regime_tag": null,
+      "label": {},
+      "meta": {
+        "embedding_dim": 128
+      }
+    },
+    "count": 3,
+    "embedding_dim": 128,
+    "elapsed_ms": 0.43739199827541597,
+    "fallback_used": true
+  },
+  "minirocket": {
+    "module_doc": "MiniRocket-based embeddings for multivariate time-series panels.",
+    "sktime_available": false,
+    "status": "dependency-missing",
+    "error": "sktime/MiniRocket not installed"
+  },
+  "deeplob": {
+    "module_doc": "DeepLOB embeddings utilities.\n\nThis module exposes a light-weight DeepLOB implementation that focuses on\nproducing penultimate-layer embeddings for limit order book (LOB) snapshots.\nIt provides an ergonomic loader that can hydrate weights on either CPU or GPU\nand a batch inference helper that returns a 128-dimensional embedding per\ninput window.\n\nTwo environment variables control runtime behaviour when weights are not\nexplicitly provided:\n\n``DEEPLOB_WEIGHTS_PATH``\n    Path to a serialized DeepLOB state dict. When supplied, the loader verifies\n    the file exists before attempting to hydrate it.\n\n``DEEPLOB_DEVICE``\n    Torch device string (for example ``\"cpu\"`` or ``\"cuda:0\"``). If unset, the\n    runtime defaults to CPU execution to maximise compatibility with\n    lightweight environments.",
+    "status": "optional-missing",
+    "error": "torch/DeepLOB not installed"
+  }
+}
