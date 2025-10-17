@@ -6,6 +6,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
+detect_prefect_version() {
+  local prefect_config
+  prefect_config="${REPO_ROOT}/prefect.yaml"
+  if [[ -f "${prefect_config}" ]]; then
+    python3 - "$prefect_config" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+version_line = None
+for line in path.read_text().splitlines():
+    striped = line.strip()
+    if not striped or striped.startswith("#"):
+        continue
+    if striped.lower().startswith("prefect-version"):
+        version_line = striped.split(":", 1)[1].strip().strip('"\'"'"')
+        break
+
+if version_line:
+    print(version_line)
+PY
+  fi
+}
+
 supabase_ready=false
 
 if command -v supabase >/dev/null 2>&1; then
@@ -33,16 +57,28 @@ fi
 prefect_ready=false
 prefect_cli_available=false
 prefect_api_host_port="${PREFECT_API_HOST_PORT:-4200}"
-prefect_api_default="http://127.0.0.1:${prefect_api_host_port}/api"
-prefect_base_url="${prefect_api_default%/api}"
-prefect_health_url="${prefect_api_default%/}/health"
+prefect_base_url="http://127.0.0.1:${prefect_api_host_port}"
+prefect_api_default="${prefect_base_url}/api"
+prefect_health_urls=("${prefect_api_default}/health" "${prefect_base_url}/health")
 prefect_ui_api_path="/api"
 prefect_pool_name="${PREFECT_WORK_POOL_NAME:-my-docker-pool}"
 prefect_worker_type="${PREFECT_WORKER_TYPE:-docker}"
 prefect_docker_network="${PREFECT_DOCKER_NETWORK:-prefect-dev}"
-prefect_server_container="${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}" 
+prefect_server_container="${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}"
 prefect_worker_container="${PREFECT_WORKER_CONTAINER_NAME:-prefect-worker-${prefect_pool_name}}"
-prefect_docker_image="${PREFECT_DOCKER_IMAGE:-prefecthq/prefect:3-latest}"
+
+prefect_version_detected="$(detect_prefect_version || true)"
+prefect_version_detected="${prefect_version_detected//[$'\r\n']}"
+prefect_version_effective="${PREFECT_VERSION:-${prefect_version_detected:-2.14.0}}"
+prefect_version_effective="${prefect_version_effective#v}"
+prefect_docker_default_image="prefecthq/prefect:${prefect_version_effective}-python3.11"
+prefect_docker_image="${PREFECT_DOCKER_IMAGE:-${prefect_docker_default_image}}"
+
+if [[ -n "${prefect_version_detected}" && -z "${PREFECT_VERSION:-}" ]]; then
+  echo "[post-start] Prefect version detected from prefect.yaml: ${prefect_version_effective}"
+elif [[ -n "${PREFECT_VERSION:-}" ]]; then
+  echo "[post-start] Prefect version overridden via PREFECT_VERSION: ${prefect_version_effective}"
+fi
 
 if command -v prefect >/dev/null 2>&1; then
   prefect_cli_available=true
@@ -54,6 +90,7 @@ docker_available=false
 if command -v docker >/dev/null 2>&1; then
   if docker info >/dev/null 2>&1; then
     docker_available=true
+    echo "[post-start] Prefect Docker image target: '${prefect_docker_image}'."
     if ! docker image inspect "${prefect_docker_image}" >/dev/null 2>&1; then
       echo "[post-start] Pulling Prefect base image '${prefect_docker_image}' for worker + job runs..."
       if ! docker pull "${prefect_docker_image}" >/dev/null 2>&1; then
@@ -89,16 +126,24 @@ if [[ "${docker_available}" == "true" && "${prefect_cli_available}" == "true" ]]
       }
   fi
 
+  prefect_health_endpoint=""
   for attempt in {1..40}; do
-    if curl -fsS --max-time 2 "${prefect_health_url}" >/dev/null 2>&1; then
-      prefect_ready=true
-      break
-    fi
+    for health_candidate in "${prefect_health_urls[@]}"; do
+      if curl -fsS --max-time 2 "${health_candidate}" >/dev/null 2>&1; then
+        prefect_ready=true
+        prefect_health_endpoint="${health_candidate}"
+        break 2
+      fi
+    done
     sleep 3
   done
 
   if [[ "${prefect_ready}" == "true" ]]; then
-    echo "[post-start] Prefect server is ready on ${prefect_base_url}."
+    if [[ -n "${prefect_health_endpoint}" ]]; then
+      echo "[post-start] Prefect server is ready on ${prefect_base_url} (health: ${prefect_health_endpoint})."
+    else
+      echo "[post-start] Prefect server is ready on ${prefect_base_url}."
+    fi
   else
     echo "[post-start] Prefect server container did not become healthy; logs:" >&2
     docker logs "${prefect_server_container}" 2>&1 || true

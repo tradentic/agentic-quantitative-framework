@@ -5,6 +5,33 @@ if [[ "${DEBUG:-false}" == "true" ]]; then
   set -x
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+detect_prefect_version() {
+  local prefect_config
+  prefect_config="${REPO_ROOT}/prefect.yaml"
+  if [[ -f "${prefect_config}" ]]; then
+    python3 - "$prefect_config" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+version_line = None
+for line in path.read_text().splitlines():
+    striped = line.strip()
+    if not striped or striped.startswith("#"):
+        continue
+    if striped.lower().startswith("prefect-version"):
+        version_line = striped.split(":", 1)[1].strip().strip('"\'"'"')
+        break
+
+if version_line:
+    print(version_line)
+PY
+  fi
+}
+
 install_packages() {
   local packages=(python3 python3-venv python3-pip pipx jq curl)
   local missing=()
@@ -64,7 +91,14 @@ main() {
   install_packages
 
   local requested_version
-  requested_version="${PREFECT_VERSION:-latest}"
+  local detected_version
+  detected_version="$(detect_prefect_version || true)"
+  detected_version="${detected_version//[$'\r\n']}"
+  if [[ -n "$detected_version" ]]; then
+    echo "[install-prefect-cli] Using Prefect version from prefect.yaml: ${detected_version}"
+  fi
+
+  requested_version="${PREFECT_VERSION:-${detected_version:-latest}}"
 
   local resolved_version=""
   if [[ "$requested_version" == "latest" ]]; then
