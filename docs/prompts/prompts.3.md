@@ -1,6 +1,6 @@
 # Insider Signals — Capability Prompts (Self‑Contained, One‑Per‑Feature)
 
-> Drop‑in Markdown prompts you can paste into your coding agent. Each prompt is **self‑contained**, scoped, and says **“Do not modify unrelated files.”** They assume your monorepo uses: Python, LangGraph/LangChain agents, Prefect 2.x for orchestration, Supabase/Postgres (+pgvector) for storage. If a path already exists, the agent must **append** or create new files beside it without touching unrelated code.
+> Drop‑in Markdown prompts you can paste into your coding agent. Each prompt is **self‑contained**, scoped, and says **“Do not modify unrelated files.”** They assume your monorepo uses: Python, LangGraph/LangChain agents, Prefect 3.x for orchestration, Supabase/Postgres (+pgvector) for storage. If a path already exists, the agent must **append** or create new files beside it without touching unrelated code.
 
 **Index**
 

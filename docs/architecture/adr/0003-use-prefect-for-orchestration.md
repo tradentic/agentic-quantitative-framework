@@ -22,7 +22,7 @@ compatibility:
 
 ## Decision
 
-Adopt **Prefect 2.x** for local flows that cover embedding refresh, backtest execution, and scheduled pruning. Keep the flow
+Adopt **Prefect 3.x** for local flows that cover embedding refresh, backtest execution, and scheduled pruning. Keep the flow
 surface thin so another orchestrator can be swapped in later if requirements change. Prefect's declarative deployments and
 hosted UI give agents immediate observability without forcing a heavy scheduler onto local workstations.
 

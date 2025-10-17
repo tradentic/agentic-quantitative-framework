@@ -204,7 +204,7 @@ prefect_worker_container="${PREFECT_WORKER_CONTAINER_NAME:-prefect-worker-dev}"
 
 prefect_version_detected="$(detect_prefect_version || true)"
 prefect_version_detected="${prefect_version_detected//[$'\r\n']}"
-prefect_version_effective="${PREFECT_VERSION:-${prefect_version_detected:-2.14.0}}"
+prefect_version_effective="${PREFECT_VERSION:-${prefect_version_detected:-3.0.0}}"
 prefect_version_effective="${prefect_version_effective#v}"
 prefect_docker_default_image="prefecthq/prefect:${prefect_version_effective}-python3.11"
 prefect_docker_image="${PREFECT_DOCKER_IMAGE:-${prefect_docker_default_image}}"
