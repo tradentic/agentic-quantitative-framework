@@ -49,10 +49,13 @@ def test_insert_embeddings_uses_conflict_key(monkeypatch: pytest.MonkeyPatch, wi
 
     assert result == [{"id": "existing"}]
     assert captured["table"] == "signal_embeddings"
-    assert captured["on_conflict"] == "asset_symbol,time_range"
+    assert captured["on_conflict"] == "asset_symbol,time_range,emb_type,emb_version"
     rows = captured["rows"]
     assert isinstance(rows, list)
     assert rows[0]["asset_symbol"] == "ACME"
     assert rows[0]["time_range"].startswith("[")
     assert len(rows[0]["embedding"]) == 128
+    assert rows[0]["emb_type"] == "ts2vec"
+    assert rows[0]["emb_version"] == "v1"
+    assert "updated_at" in rows[0]
 
