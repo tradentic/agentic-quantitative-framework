@@ -26,6 +26,62 @@ wait_for_docker_daemon() {
   return 1
 }
 
+supabase_status_ready() {
+  local status_file
+  status_file="$(mktemp)"
+
+  if supabase status >"${status_file}" 2>&1; then
+    if grep -qi 'api url' "${status_file}"; then
+      rm -f "${status_file}"
+      return 0
+    fi
+  fi
+
+  rm -f "${status_file}"
+  return 1
+}
+
+wait_for_supabase_ready() {
+  local max_attempts="${1:-40}"
+  local sleep_seconds="${2:-3}"
+  local attempt
+
+  for attempt in $(seq 1 "${max_attempts}"); do
+    if supabase_status_ready; then
+      return 0
+    fi
+
+    if [[ "${attempt}" -eq 1 ]]; then
+      echo "[post-start] Waiting for Supabase containers to become ready..." >&2
+    fi
+
+    sleep "${sleep_seconds}"
+  done
+
+  return 1
+}
+
+start_supabase_services() {
+  local output
+  local exit_code
+
+  if output="$(supabase start 2>&1)"; then
+    echo "[post-start] Supabase services started."
+    return 0
+  fi
+
+  exit_code=$?
+
+  if grep -qi 'already running' <<<"${output}"; then
+    echo "[post-start] Supabase services are already starting or running."
+    return 0
+  fi
+
+  echo "[post-start] 'supabase start' failed (exit code ${exit_code}). Output:" >&2
+  echo "${output}" >&2
+  return "${exit_code}"
+}
+
 detect_prefect_version() {
   local prefect_config
   prefect_config="${REPO_ROOT}/prefect.yaml"
@@ -162,13 +218,27 @@ if command -v supabase >/dev/null 2>&1; then
         supabase_ready=true
       else
         echo "[post-start] Supabase services not running; starting now..."
-        supabase start
-        supabase_ready=true
+        if ! start_supabase_services; then
+          echo "[post-start] Supabase start command reported an error; continuing to wait for readiness." >&2
+        fi
+        if wait_for_supabase_ready 40 3; then
+          echo "[post-start] Supabase services are ready."
+          supabase_ready=true
+        else
+          echo "[post-start] Supabase services did not become ready in time." >&2
+        fi
       fi
     else
       echo "[post-start] Supabase status check failed; attempting to start services..." >&2
-      supabase start
-      supabase_ready=true
+      if ! start_supabase_services; then
+        echo "[post-start] Supabase start command reported an error; continuing to wait for readiness." >&2
+      fi
+      if wait_for_supabase_ready 40 3; then
+        echo "[post-start] Supabase services are ready."
+        supabase_ready=true
+      else
+        echo "[post-start] Supabase services did not become ready in time." >&2
+      fi
     fi
     rm -f "${status_file}"
   else
