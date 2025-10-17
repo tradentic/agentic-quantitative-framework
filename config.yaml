@@ -1,0 +1,29 @@
+market_features:
+  defaults:
+    persist: false
+
+embeddings:
+  defaults:
+    limit: 5
+
+fingerprints:
+  defaults:
+    window_days: 7
+    fingerprint_size: 128
+    signal_name: insider_offexchange
+    signal_version: v1
+    feature_version: fingerprint-offexchange-v1
+    use_pca: true
+  overrides:
+    "2024-12-24":
+      window_days: 5
+
+scans:
+  defaults:
+    top_k: 10
+    signal_name: insider_offexchange
+    signal_version: v1
+
+backtest:
+  defaults:
+    limit: 5

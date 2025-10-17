@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from prefect import flow, get_run_logger, task
 
@@ -13,6 +13,7 @@ from framework.finra_client import FINRA_SHORT_VOLUME_MARKET, get_ats_week, get_
 from framework.provenance import OFFEX_FEATURE_VERSION, hash_bytes, record_provenance
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 from utils.guards import SkipStep, retry_on_timeout
+from utils.symbols import normalize_symbol_list
 
 
 FINRA_BASE_URL = os.getenv("FINRA_BASE_URL", "https://cdn.finra.org/equity")
@@ -24,13 +25,6 @@ def _week_ending(trade_date: date) -> date:
     weekday = trade_date.weekday()  # Monday=0
     offset = (4 - weekday) % 7
     return trade_date + timedelta(days=offset)
-
-
-def _normalize_symbols(symbols: Iterable[str]) -> list[str]:
-    unique = {symbol.strip().upper() for symbol in symbols if symbol and symbol.strip()}
-    return sorted(unique)
-
-
 @retry_on_timeout
 def _fetch_supabase_symbols(trade_date: date) -> Sequence[dict[str, object]]:
     client = get_supabase_client()
@@ -48,7 +42,7 @@ def _fetch_supabase_symbols(trade_date: date) -> Sequence[dict[str, object]]:
 def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = None) -> list[str]:
     logger = get_run_logger()
     if symbols:
-        normalized = _normalize_symbols(symbols)
+        normalized = normalize_symbol_list(symbols)
         if not normalized:
             logger.info("Provided symbol list was empty after normalization for %s", trade_date)
             raise SkipStep("No symbols")
@@ -59,7 +53,7 @@ def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = Non
     except MissingSupabaseConfiguration:
         logger.warning("Supabase credentials missing; skipping symbol discovery for %s", trade_date)
         raise SkipStep("Supabase credentials missing")
-    normalized = _normalize_symbols(row.get("symbol", "") for row in rows)
+    normalized = normalize_symbol_list((row.get("symbol", "") for row in rows))
     if not normalized:
         logger.info("Supabase returned no symbols for %s", trade_date)
         raise SkipStep("No symbols")
