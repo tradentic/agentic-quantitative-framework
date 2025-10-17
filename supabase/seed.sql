@@ -20,6 +20,26 @@ values (
 )
  on conflict do nothing;
 
+-- Seed a demo drift event for monitoring dashboards
+delete from public.drift_events where trigger_type = 'seed';
+insert into public.drift_events (metric, trigger_type, triggered_at, details)
+values (
+  'demo_sharpe',
+  'seed',
+  '2024-01-15T00:00:00+00',
+  jsonb_build_object(
+    'strategy_id', 'demo_strategy',
+    'metric_value', 0.25,
+    'threshold', 0.5,
+    'summary', jsonb_build_object('sharpe', 0.25),
+    'thresholds', jsonb_build_object(
+        'min_sharpe', 0.5,
+        'metric_floors', '{}'::jsonb
+    ),
+    'metadata', jsonb_build_object('source', 'seed')
+  )
+);
+
 -- Signal embeddings sample vector
 insert into public.signal_embeddings (
   asset_symbol,
