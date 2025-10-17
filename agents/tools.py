@@ -23,6 +23,12 @@ from framework.supabase_client import (
     store_artifact_file,
     store_artifact_json,
 )
+from monitoring import (
+    DriftThreshold,
+    RetrainingRequired,
+    assess_metric_drift,
+    load_recent_backtests,
+)
 
 FEATURES_DIR = Path(__file__).resolve().parent.parent / "features"
 ARTIFACT_ROOT = Path("artifacts")
@@ -197,10 +203,93 @@ def poll_embedding_jobs(limit: int = 5) -> list[dict[str, Any]]:
     return list_pending_embedding_jobs(limit=limit)
 
 
+def _coerce_threshold(entry: dict[str, Any]) -> DriftThreshold:
+    metric = entry.get("metric")
+    if not metric:
+        raise ValueError("Each threshold entry must include a metric name.")
+    min_value = entry.get("min_value")
+    max_value = entry.get("max_value")
+    return DriftThreshold(
+        metric=metric,
+        min_value=float(min_value) if min_value is not None else None,
+        max_value=float(max_value) if max_value is not None else None,
+        trigger_type=entry.get("trigger_type", "threshold"),
+        retrain_on_trigger=bool(entry.get("retrain_on_trigger", True)),
+    )
+
+
+def detect_drift_and_retrain(payload: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate stored backtest metrics and trigger retraining if thresholds breach."""
+
+    strategy_id = payload.get("strategy_id")
+    if not strategy_id:
+        raise ValueError("`strategy_id` is required to detect drift.")
+
+    lookback = int(payload.get("lookback", 5))
+    thresholds_config = payload.get("thresholds") or []
+    thresholds: list[DriftThreshold] = []
+    for entry in thresholds_config:
+        thresholds.append(_coerce_threshold(entry))
+
+    if not thresholds:
+        minimum = payload.get("sharpe_min")
+        minimum = float(minimum) if minimum is not None else 1.0
+        thresholds = [
+            DriftThreshold(
+                metric="sharpe",
+                min_value=minimum,
+                trigger_type="sharpe_floor",
+                retrain_on_trigger=True,
+            )
+        ]
+
+    records = load_recent_backtests(strategy_id=strategy_id, limit=lookback)
+    if not records:
+        return {
+            "action": "detect_drift_and_retrain",
+            "strategy_id": strategy_id,
+            "status": "no_data",
+        }
+
+    latest = records[0]
+    artefact = {"metrics": latest.get("metrics", {})}
+    context = {
+        "strategy_id": strategy_id,
+        "backtest_id": str(latest.get("id")),
+        "source": "langgraph.detect_drift_and_retrain",
+    }
+
+    try:
+        assess_metric_drift(artefact, thresholds, context=context)
+    except RetrainingRequired as exc:
+        return {
+            "action": "detect_drift_and_retrain",
+            "strategy_id": strategy_id,
+            "status": "retraining_triggered",
+            "events": [
+                {
+                    "metric": event.metric,
+                    "observed": event.observed,
+                    "trigger_type": event.trigger_type,
+                    "details": event.details,
+                }
+                for event in exc.events
+            ],
+        }
+
+    return {
+        "action": "detect_drift_and_retrain",
+        "strategy_id": strategy_id,
+        "status": "no_drift",
+        "checked_at": datetime.utcnow().isoformat(),
+    }
+
+
 __all__ = [
     "poll_embedding_jobs",
     "propose_new_feature",
     "prune_vectors",
     "refresh_vector_store",
     "run_backtest",
+    "detect_drift_and_retrain",
 ]

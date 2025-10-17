@@ -20,6 +20,15 @@ values (
 )
  on conflict do nothing;
 
+insert into public.drift_events (metric, trigger_type, triggered_at, details)
+values (
+  'sharpe',
+  'seed',
+  '2024-01-15T00:00:00+00',
+  '{"observed":0.0,"minimum":1.0,"context":{"source":"seed"}}'
+)
+on conflict do nothing;
+
 -- Signal embeddings sample vector
 insert into public.signal_embeddings (
   asset_symbol,

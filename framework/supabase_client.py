@@ -150,6 +150,15 @@ class BacktestResult(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class DriftEventRecord(BaseModel):
+    """Structured payload for entries in the drift events table."""
+
+    metric: str
+    trigger_type: str
+    triggered_at: datetime = Field(default_factory=datetime.utcnow)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 @dataclass
 class FeatureRegistryEntry:
     """Structured representation for entries in the feature registry."""
@@ -238,8 +247,29 @@ def insert_backtest_result(result: BacktestResult | dict[str, Any]) -> dict[str,
     client = get_supabase_client()
     response = client.table("backtest_results").insert(payload).execute()
     data = getattr(response, "data", None)
-    if data is None:
+    if not data:
         return payload
+    if isinstance(data, list):
+        return cast(dict[str, Any], data[0])
+    return cast(dict[str, Any], data)
+
+
+@_retryable()
+def insert_drift_event(event: DriftEventRecord | dict[str, Any]) -> dict[str, Any]:
+    """Insert a drift event entry and return the persisted payload."""
+
+    model = event if isinstance(event, DriftEventRecord) else DriftEventRecord(**event)
+    payload = model.model_dump()
+    triggered_at = payload.get("triggered_at")
+    if isinstance(triggered_at, datetime):
+        payload["triggered_at"] = triggered_at.replace(tzinfo=timezone.utc).isoformat()
+    client = get_supabase_client()
+    response = client.table("drift_events").insert(payload).execute()
+    data = getattr(response, "data", None)
+    if not data:
+        return payload
+    if isinstance(data, list):
+        return cast(dict[str, Any], data[0])
     return cast(dict[str, Any], data)
 
 
@@ -309,6 +339,27 @@ def store_artifact_file(path: str, file_path: str, *, bucket: str | None = None)
     return f"{bucket_name}/{path}"
 
 
+@_retryable()
+def fetch_backtest_results(strategy_id: str, *, limit: int = 5) -> list[dict[str, Any]]:
+    """Return recent backtest result rows for a given strategy."""
+
+    client = get_supabase_client()
+    response = (
+        client.table("backtest_results")
+        .select("id,strategy_id,config,metrics,artifacts,created_at")
+        .eq("strategy_id", strategy_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    data = getattr(response, "data", None)
+    if not data:
+        return []
+    if isinstance(data, list):
+        return cast(list[dict[str, Any]], data)
+    return [cast(dict[str, Any], data)]
+
+
 def fetch_agent_state(agent_id: str) -> dict[str, Any]:
     """Load serialized agent state from Supabase."""
 
@@ -358,15 +409,18 @@ def list_pending_embedding_jobs(limit: int = 10) -> list[dict[str, Any]]:
 
 __all__ = [
     "BacktestResult",
+    "DriftEventRecord",
     "EmbeddingRecord",
     "FeatureRegistryEntry",
     "MissingSupabaseConfiguration",
     "build_metadata",
+    "fetch_backtest_results",
     "fetch_agent_state",
     "fetch_nearest",
     "get_supabase_client",
     "insert_feature",
     "insert_backtest_result",
+    "insert_drift_event",
     "insert_embeddings",
     "nearest",
     "list_failed_features",

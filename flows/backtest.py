@@ -27,6 +27,13 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from monitoring import (
+    DriftThreshold,
+    RetrainingRequired,
+    assess_metric_drift,
+    log_backtest_metrics,
+)
+
 try:
     from lightgbm import LGBMClassifier
 except Exception:  # pragma: no cover - optional dependency
@@ -53,6 +60,7 @@ class InsiderBacktestConfig:
     window_symbol_column: str = "symbol"
     filing_date_column: str = "filing_date"
     filing_symbol_column: str = "symbol"
+    strategy_id: str = "insider_prefiling_classifier"
 
 
 @dataclass(slots=True)
@@ -85,6 +93,16 @@ class BacktestArtifacts:
     roc_curve_path: Path
     pr_curve_path: Path
     calibration_path: Path
+
+
+DEFAULT_DRIFT_THRESHOLDS: tuple[DriftThreshold, ...] = (
+    DriftThreshold(metric="roc_auc", min_value=0.55, trigger_type="validation_roc_auc"),
+    DriftThreshold(
+        metric="average_precision",
+        min_value=0.30,
+        trigger_type="validation_average_precision",
+    ),
+)
 
 
 def _coerce_datetime(series: pd.Series) -> pd.Series:
@@ -484,6 +502,58 @@ def insider_prefiling_backtest(config: InsiderBacktestConfig) -> BacktestArtifac
     _plot_roc(results, roc_path)
     _plot_pr(results, pr_path)
     _plot_calibration(results, calibration_path)
+
+    best_result = max(
+        results,
+        key=lambda result: result.metrics.get("roc_auc", float("-inf")),
+    )
+    metrics_to_log = {
+        key: best_result.metrics[key]
+        for key in ("roc_auc", "average_precision", "brier_score", "log_loss", "accuracy")
+        if key in best_result.metrics
+    }
+    log_backtest_metrics(
+        strategy_id=config.strategy_id,
+        metrics=metrics_to_log,
+        config={
+            "model_name": best_result.model_name,
+            "implementation": best_result.implementation,
+            "label_horizon_days": config.label_horizon_days,
+        },
+        artifacts={
+            "metrics_path": str(metrics_path),
+            "roc_curve_path": str(roc_path),
+            "pr_curve_path": str(pr_path),
+            "calibration_path": str(calibration_path),
+        },
+    )
+
+    drift_payload = {
+        "models": [
+            {
+                "name": result.model_name,
+                "metrics": result.metrics,
+            }
+            for result in results
+        ]
+    }
+
+    try:
+        assess_metric_drift(
+            drift_payload,
+            DEFAULT_DRIFT_THRESHOLDS,
+            context={
+                "strategy_id": config.strategy_id,
+                "artifact": str(metrics_path),
+            },
+        )
+    except RetrainingRequired as exc:
+        logger.warning(
+            "Drift detected for %s with metrics below thresholds: %s",
+            config.strategy_id,
+            [event.metric for event in exc.events],
+        )
+        raise
 
     logger.info("Metrics written to %s", metrics_path)
     return BacktestArtifacts(
