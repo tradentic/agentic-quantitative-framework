@@ -94,6 +94,8 @@ pip install .[tests]
 pytest tests/flows/test_entrypoints.py
 ```
 
+Need the embedding helpers locally? Install the extra with `pip install .[embeddings]` before running vector audits or time-series feature scripts.
+
 **Common failures**
 
 * Entry point typo → fix the module path or attribute in `prefect.yaml`
