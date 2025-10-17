@@ -1,0 +1,36 @@
+{
+  "repo": {
+    "branch": "work",
+    "sha": "638c5f9",
+    "dirty": true
+  },
+  "env": {
+    "sec_user_agent": "missing",
+    "database_url": "missing",
+    "test_url": "missing"
+  },
+  "cli": {
+    "help_ok": true,
+    "flags": [
+      "--date"
+    ]
+  },
+  "dry_run": {
+    "ran": false,
+    "exit_code": null,
+    "parsed_symbol": null,
+    "transactions_found": false
+  },
+  "persist": {
+    "ran": false,
+    "exit_code": null,
+    "rows_added": 0,
+    "rolled_back": false
+  },
+  "db": {
+    "table": "insider_transactions",
+    "pre_count": null,
+    "post_count": null
+  },
+  "notes": "Missing SEC_USER_AGENT and Form 4 URL prevented running ingest flow."
+}
