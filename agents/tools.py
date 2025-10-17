@@ -24,6 +24,7 @@ from framework.supabase_client import (
     store_artifact_file,
     store_artifact_json,
 )
+from monitoring.drift_monitor import DriftThresholds, evaluate_drift, handle_drift
 
 FEATURES_DIR = Path(__file__).resolve().parent.parent / "features"
 ARTIFACT_ROOT = Path("artifacts")
@@ -36,6 +37,26 @@ def _slugify(name: str) -> str:
 
 def _ensure_features_dir() -> None:
     FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _coerce_optional_float(value: Any, default: float | None) -> float | None:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_metric_floors(raw: Any) -> dict[str, float]:
+    floors: dict[str, float] = {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            try:
+                floors[str(key)] = float(value)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                continue
+    return floors
 
 
 def propose_new_feature(feature_payload: dict[str, Any]) -> dict[str, Any]:
@@ -233,6 +254,102 @@ def propose_feature_from_persistence(idea_payload: dict[str, Any]) -> dict[str, 
     }
 
 
+def detect_drift_and_retrain(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Inspect stored backtest metrics and trigger retraining when drift emerges."""
+
+    payload = payload or {}
+    strategy_id = payload.get("strategy_id")
+    if not strategy_id:
+        raise ValueError("`strategy_id` is required for drift detection.")
+
+    default_thresholds = DriftThresholds.default()
+    min_sharpe = _coerce_optional_float(
+        payload.get("min_sharpe"), default_thresholds.min_sharpe
+    )
+    metric_floors = _coerce_metric_floors(payload.get("metric_floors"))
+    thresholds = DriftThresholds(min_sharpe=min_sharpe, metric_floors=metric_floors)
+
+    try:
+        lookback = int(payload.get("lookback", 5))
+    except (TypeError, ValueError):
+        lookback = 5
+    lookback = max(1, lookback)
+    stop_on_first = bool(payload.get("stop_on_first", True))
+    raise_on_trigger = bool(payload.get("raise_on_trigger", False))
+    metadata = payload.get("metadata")
+    metadata_dict = metadata if isinstance(metadata, dict) else {}
+
+    try:
+        client = get_supabase_client()
+    except MissingSupabaseConfiguration:
+        return {
+            "action": "detect_drift_and_retrain",
+            "strategy_id": strategy_id,
+            "retrain": False,
+            "reason": "Supabase not configured",
+            "evaluations": [],
+            "thresholds": thresholds.to_dict(),
+            "checked": 0,
+        }
+
+    try:
+        response = (
+            client.table("backtest_results")
+            .select("metrics, config, created_at")
+            .eq("strategy_id", strategy_id)
+            .order("created_at", desc=True)
+            .limit(lookback)
+            .execute()
+        )
+        rows = getattr(response, "data", []) or []
+    except Exception as exc:  # pragma: no cover - network failure guard
+        return {
+            "action": "detect_drift_and_retrain",
+            "strategy_id": strategy_id,
+            "retrain": False,
+            "reason": f"Failed to fetch metrics: {exc}",
+            "evaluations": [],
+            "thresholds": thresholds.to_dict(),
+            "checked": 0,
+        }
+
+    evaluations: list[dict[str, Any]] = []
+    triggered = False
+
+    for row in rows:
+        metrics = row.get("metrics") or {}
+        evaluation = evaluate_drift(metrics, thresholds=thresholds)
+        if evaluation.triggered:
+            triggered = True
+            context_meta = dict(metadata_dict)
+            context_meta.setdefault("source", "detect_drift_and_retrain")
+            context_meta["backtest_created_at"] = row.get("created_at")
+            handle_drift(
+                evaluation,
+                strategy_id=strategy_id,
+                metadata=context_meta,
+                raise_on_trigger=raise_on_trigger,
+            )
+            evaluations.append(
+                {
+                    "created_at": row.get("created_at"),
+                    "triggered_metrics": evaluation.triggered_metrics,
+                    "summary": evaluation.summary,
+                }
+            )
+            if stop_on_first:
+                break
+
+    return {
+        "action": "detect_drift_and_retrain",
+        "strategy_id": strategy_id,
+        "retrain": triggered,
+        "evaluations": evaluations,
+        "thresholds": thresholds.to_dict(),
+        "checked": len(rows),
+    }
+
+
 __all__ = [
     "poll_embedding_jobs",
     "propose_feature_from_persistence",
@@ -240,4 +357,5 @@ __all__ = [
     "prune_vectors",
     "refresh_vector_store",
     "run_backtest",
+    "detect_drift_and_retrain",
 ]

@@ -29,6 +29,14 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from monitoring.drift_monitor import (
+    DriftThresholds,
+    evaluate_drift,
+    handle_drift,
+    log_backtest_metrics,
+    summarize_evaluation_metrics,
+)
+
 try:
     from lightgbm import LGBMClassifier
 except Exception:  # pragma: no cover - optional dependency
@@ -551,12 +559,52 @@ def insider_prefiling_backtest(config: InsiderBacktestConfig) -> BacktestArtifac
     _plot_calibration(results, calibration_path)
 
     logger.info("Metrics written to %s", metrics_path)
-    return BacktestArtifacts(
+
+    artifacts = BacktestArtifacts(
         metrics_path=metrics_path,
         roc_curve_path=roc_path,
         pr_curve_path=pr_path,
         calibration_path=calibration_path,
     )
+
+    config_payload = asdict(config)
+    for key, value in list(config_payload.items()):
+        if isinstance(value, Path):
+            config_payload[key] = str(value)
+
+    artifact_payload = {
+        "metrics_path": str(metrics_path),
+        "roc_curve_path": str(roc_path),
+        "pr_curve_path": str(pr_path),
+        "calibration_path": str(calibration_path),
+    }
+
+    summary = summarize_evaluation_metrics(results)
+    log_backtest_metrics(
+        summary,
+        strategy_id=config.model,
+        config=config_payload,
+        artifacts=artifact_payload,
+        logger=logger,
+    )
+
+    evaluation = evaluate_drift(summary, thresholds=DriftThresholds.default())
+    if not evaluation.triggered:
+        logger.info(
+            "No drift detected for %s; summary metrics=%s",
+            config.model,
+            summary,
+        )
+        return artifacts
+
+    handle_drift(
+        evaluation,
+        strategy_id=config.model,
+        metadata={"config": config_payload, "artifacts": artifact_payload},
+        logger=logger,
+    )
+
+    return artifacts
 
 
 __all__ = [
