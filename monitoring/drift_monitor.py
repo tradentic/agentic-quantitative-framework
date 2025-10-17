@@ -76,10 +76,11 @@ class DriftDetected(RuntimeError):
 
 def summarize_evaluation_metrics(
     results: Sequence[_SupportsMetrics | Mapping[str, Any]]
-) -> dict[str, float]:
-    """Collapse evaluation results into a flat mapping of numeric metrics."""
+) -> dict[str, Any]:
+    """Collapse evaluation results into numeric metrics plus reserved explainability context."""
 
-    summary: dict[str, float] = {}
+    summary: dict[str, Any] = {}
+    explainability_key = "feature_contribution_plan"
     for result in results:
         metrics: Mapping[str, Any] | None
         if isinstance(result, Mapping):
@@ -91,6 +92,8 @@ def summarize_evaluation_metrics(
         for key, value in metrics.items():
             if isinstance(value, (int, float)):
                 summary[key] = float(value)
+        if explainability_key in metrics and explainability_key not in summary:
+            summary[explainability_key] = metrics[explainability_key]
     return summary
 
 
@@ -146,10 +149,17 @@ def log_backtest_metrics(
 ) -> dict[str, Any] | None:
     """Persist key metrics into Supabase for longitudinal monitoring."""
 
+    metrics_payload: dict[str, Any] = {
+        k: float(v) for k, v in summary.items() if isinstance(v, (int, float))
+    }
+    explainability = summary.get("feature_contribution_plan")
+    if isinstance(explainability, Mapping):
+        metrics_payload["feature_contribution_plan"] = dict(explainability)
+
     payload = {
         "strategy_id": strategy_id,
         "config": dict(config or {}),
-        "metrics": {k: float(v) for k, v in summary.items() if isinstance(v, (int, float))},
+        "metrics": metrics_payload,
         "artifacts": dict(artifacts or {}),
     }
     try:

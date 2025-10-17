@@ -33,5 +33,7 @@ The Prefect deployment `scheduled-backtest-runner` polls `backtest_requests` for
 
 The backtest tool returns a structured dictionary with metric summaries and Supabase storage paths. Agents, notebooks, or Prefect
 flows can follow up by querying `backtest_results` for the stored `config` metadata or by downloading artifacts from storage to
-re-plot curves. The canonical architecture remains documented in
+re-plot curves. In addition to scalar scores, the persisted `metrics` payload now reserves a `feature_contribution_plan` object
+describing the placeholder status and intended SHAP/TDA tooling. Explainability pipelines can attach their feature attribution
+tensors into this slot without changing the surrounding schema. The canonical architecture remains documented in
 [architecture/quant_ai_strategy_design.md](architecture/quant_ai_strategy_design.md).
