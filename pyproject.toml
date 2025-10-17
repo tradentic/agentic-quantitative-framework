@@ -16,6 +16,9 @@ dependencies = [
     "prefect>=2.14.0",
     "supabase>=2.4.0",
     "pgvector>=0.2.5",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-otlp>=1.24.0",
+    "opentelemetry-instrumentation-requests>=0.48b0",
     "ruff>=0.6.0",
     "mypy>=1.10.0",
     "pandas>=2.2.0",
@@ -41,6 +44,7 @@ include = [
     "flows*",
     "backtest*",
     "supabase*",
+    "observability*",
     "use_cases*",
 ]
 

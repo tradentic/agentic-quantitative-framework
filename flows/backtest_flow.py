@@ -7,59 +7,79 @@ from typing import Any
 
 from agents.tools import run_backtest
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from observability.otel import init_tracing
 from prefect import flow, get_run_logger, task
+
+
+tracer = init_tracing("flow-scheduled-backtest-runner")
 
 
 @task
 def fetch_pending_backtests(limit: int = 5) -> list[dict[str, Any]]:
     logger = get_run_logger()
+    attributes = {"limit": limit}
     try:
         client = get_supabase_client()
     except MissingSupabaseConfiguration:
         logger.warning("Supabase credentials missing; returning empty backtest queue.")
         return []
-    response = (
-        client.table("backtest_requests")
-        .select("*")
-        .eq("status", "pending")
-        .order("created_at")
-        .limit(limit)
-        .execute()
-    )
-    requests = getattr(response, "data", []) or []
-    logger.info("Fetched %d backtest requests", len(requests))
-    return requests
+    with tracer.start_as_current_span("backtest.fetch_queue", attributes=attributes) as span:
+        response = (
+            client.table("backtest_requests")
+            .select("*")
+            .eq("status", "pending")
+            .order("created_at")
+            .limit(limit)
+            .execute()
+        )
+        requests = getattr(response, "data", []) or []
+        span.set_attribute("queue_length", len(requests))
+        logger.info("Fetched %d backtest requests", len(requests))
+        return requests
 
 
 @task
 def execute_backtest_request(request: dict[str, Any]) -> dict[str, Any]:
     logger = get_run_logger()
-    config = request.get("config") or {}
-    config.setdefault("strategy_id", request.get("strategy_id", "unknown"))
-    run_backtest(config)
-    try:
-        client = get_supabase_client()
-        client.table("backtest_requests").update(
-            {
-                "status": "completed",
-                "completed_at": datetime.utcnow().isoformat(),
-            }
-        ).eq("id", request.get("id")).execute()
-    except MissingSupabaseConfiguration:
-        logger.debug("Supabase unavailable; skipping request status update.")
-    logger.info("Completed backtest request %s", request.get("id"))
-    return request
+    attributes = {
+        "request_id": request.get("id"),
+        "strategy_id": request.get("strategy_id"),
+    }
+    with tracer.start_as_current_span("backtest.execute_request", attributes=attributes):
+        config = request.get("config") or {}
+        config.setdefault("strategy_id", request.get("strategy_id", "unknown"))
+        run_backtest(config)
+        try:
+            client = get_supabase_client()
+            with tracer.start_as_current_span(
+                "supabase.update", attributes={"table": "backtest_requests"}
+            ):
+                client.table("backtest_requests").update(
+                    {
+                        "status": "completed",
+                        "completed_at": datetime.utcnow().isoformat(),
+                    }
+                ).eq("id", request.get("id")).execute()
+        except MissingSupabaseConfiguration:
+            logger.debug("Supabase unavailable; skipping request status update.")
+        logger.info("Completed backtest request %s", request.get("id"))
+        return request
 
 
 @flow(name="scheduled-backtest-runner")
 def scheduled_backtest_runner(limit: int = 5) -> list[dict[str, Any]]:
     """Run pending backtests in batches."""
 
-    queue = fetch_pending_backtests(limit)
-    results: list[dict[str, Any]] = []
-    for request in queue:
-        results.append(execute_backtest_request(request))
-    return results
+    with tracer.start_as_current_span(
+        "flow.scheduled_backtest_runner", attributes={"limit": limit}
+    ) as span:
+        queue = fetch_pending_backtests(limit)
+        span.set_attribute("queue_length", len(queue))
+        results: list[dict[str, Any]] = []
+        for request in queue:
+            results.append(execute_backtest_request(request))
+        span.set_attribute("completed_requests", len(results))
+        return results
 
 
 __all__ = ["scheduled_backtest_runner"]

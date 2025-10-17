@@ -11,6 +11,8 @@ import xml.etree.ElementTree as ET
 
 from prefect import flow, get_run_logger
 
+from observability.otel import init_tracing
+
 from framework.provenance import FORM4_PARSER_VERSION, hash_bytes, record_provenance
 from framework.sec_client import (
     Form4IndexRow,
@@ -21,6 +23,8 @@ from framework.sec_client import (
     parse_form4_xml,
 )
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+
+tracer = init_tracing("flow-ingest-sec-form4")
 
 BATCH_SIZE = max(int(os.getenv("SEC_FORM4_BATCH_SIZE", "50")), 1)
 
@@ -83,10 +87,14 @@ def _persist_records(table: str, records: list[dict[str, object]], *, conflict: 
     if not records:
         return 0
     client = get_supabase_client()
+    attributes = {"table": table, "rows": len(records)}
     if conflict:
-        client.table(table).upsert(records, on_conflict=conflict).execute()
-    else:
-        client.table(table).upsert(records).execute()
+        attributes["on_conflict"] = conflict
+    with tracer.start_as_current_span("supabase.upsert", attributes=attributes):
+        if conflict:
+            client.table(table).upsert(records, on_conflict=conflict).execute()
+        else:
+            client.table(table).upsert(records).execute()
     return len(records)
 
 
@@ -110,90 +118,115 @@ def ingest_form4(date_from: date, date_to: date | None = None) -> dict[str, int]
         logger.warning("Supabase credentials not configured; running in dry-run mode")
         persistence_available = False
 
-    for target_date in _daterange(date_from, date_to):
-        rows = list(iter_form4_index(target_date))
-        logger.info("%s -> %d Form 4 candidates", target_date, len(rows))
-        for batch in _chunked(rows, BATCH_SIZE):
-            filings_payload: list[dict[str, object]] = []
-            transactions_payload: list[dict[str, object]] = []
-            batch_provenance: list[tuple[str, dict[str, object] | str, dict[str, object]]] = []
-            for row in batch:
-                xml_url = accession_to_primary_xml_url(row.accession_path)
-                try:
-                    fetched_at = datetime.now(timezone.utc).isoformat()
-                    xml_bytes = fetch_edgar_url(xml_url)
-                except FileNotFoundError:
-                    logger.warning("Missing primary XML for accession %s", row.accession_number)
-                    continue
-                try:
-                    parsed = parse_form4_xml(xml_bytes)
-                except ET.ParseError as exc:
-                    logger.warning(
-                        "Failed to parse Form 4 XML for accession %s: %s",
-                        row.accession_number,
-                        exc,
-                    )
-                    continue
-                if not parsed.accession:
-                    parsed = ParsedForm4(
-                        symbol=parsed.symbol,
-                        transactions=parsed.transactions,
-                        reporter=parsed.reporter,
-                        issuer_cik=parsed.issuer_cik or row.cik,
-                        reporter_cik=parsed.reporter_cik,
-                        accession=row.accession_number,
-                    )
-                xml_hash = hash_bytes(xml_bytes)
-                filing_record = _build_filing_record(row, parsed, xml_url)
-                filing_record["xml_sha256"] = xml_hash
-                filing_record["provenance"] = {
-                    "parser_version": FORM4_PARSER_VERSION,
-                    "source_url": xml_url,
-                    "fetched_at": fetched_at,
-                }
-                filings_payload.append(filing_record)
-                filing_meta = {
-                    "source_url": xml_url,
-                    "xml_sha256": xml_hash,
-                    "parser_version": FORM4_PARSER_VERSION,
-                    "fetched_at": fetched_at,
-                    "payload_sha256": filing_record.get("payload_sha256"),
-                }
-                batch_provenance.append(
-                    (
-                        "edgar_filings",
-                        {"accession_number": filing_record["accession_number"]},
-                        filing_meta,
-                    )
-                )
-                for txn_record in _build_transaction_records(parsed):
-                    transactions_payload.append(txn_record)
-                    txn_key = {
-                        "accession_number": txn_record["accession_number"],
-                        "transaction_date": txn_record["transaction_date"],
-                        "transaction_code": txn_record["transaction_code"],
-                        "symbol": txn_record["symbol"],
-                    }
-                    batch_provenance.append(("insider_transactions", txn_key, filing_meta))
-            batch_filings = len(filings_payload)
-            batch_transactions = len(transactions_payload)
-            if persistence_available:
-                total_filings += _persist_records(
-                    "edgar_filings", filings_payload, conflict="accession_number"
-                )
-                total_transactions += _persist_records(
-                    "insider_transactions",
-                    transactions_payload,
-                    conflict="accession_number,transaction_date,transaction_code,symbol",
-                )
-                for table_name, pk, meta in batch_provenance:
-                    record_provenance(table_name, pk, meta)
-            else:
-                total_filings += batch_filings
-                total_transactions += batch_transactions
-        logger.info(
-            "%s -> %d filings persisted, %d transactions", target_date, total_filings, total_transactions
-        )
+    flow_attributes = {"date_from": date_from.isoformat(), "date_to": date_to.isoformat()}
+    with tracer.start_as_current_span("flow.ingest_form4", attributes=flow_attributes):
+        for target_date in _daterange(date_from, date_to):
+            rows = list(iter_form4_index(target_date))
+            logger.info("%s -> %d Form 4 candidates", target_date, len(rows))
+            date_attributes = {
+                "target_date": target_date.isoformat(),
+                "candidate_count": len(rows),
+            }
+            with tracer.start_as_current_span(
+                "ingest.process_date",
+                attributes=date_attributes,
+            ) as date_span:
+                for batch in _chunked(rows, BATCH_SIZE):
+                    filings_payload: list[dict[str, object]] = []
+                    transactions_payload: list[dict[str, object]] = []
+                    batch_provenance: list[tuple[str, dict[str, object] | str, dict[str, object]]] = []
+                    batch_attributes = {"batch_size": len(batch)}
+                    with tracer.start_as_current_span(
+                        "ingest.process_batch", attributes=batch_attributes
+                    ) as batch_span:
+                        for row in batch:
+                            xml_url = accession_to_primary_xml_url(row.accession_path)
+                            try:
+                                fetched_at = datetime.now(timezone.utc).isoformat()
+                                xml_bytes = fetch_edgar_url(xml_url)
+                            except FileNotFoundError:
+                                logger.warning(
+                                    "Missing primary XML for accession %s", row.accession_number
+                                )
+                                continue
+                            try:
+                                parsed = parse_form4_xml(xml_bytes)
+                            except ET.ParseError as exc:
+                                logger.warning(
+                                    "Failed to parse Form 4 XML for accession %s: %s",
+                                    row.accession_number,
+                                    exc,
+                                )
+                                continue
+                            if not parsed.accession:
+                                parsed = ParsedForm4(
+                                    symbol=parsed.symbol,
+                                    transactions=parsed.transactions,
+                                    reporter=parsed.reporter,
+                                    issuer_cik=parsed.issuer_cik or row.cik,
+                                    reporter_cik=parsed.reporter_cik,
+                                    accession=row.accession_number,
+                                )
+                            xml_hash = hash_bytes(xml_bytes)
+                            filing_record = _build_filing_record(row, parsed, xml_url)
+                            filing_record["xml_sha256"] = xml_hash
+                            filing_record["provenance"] = {
+                                "parser_version": FORM4_PARSER_VERSION,
+                                "source_url": xml_url,
+                                "fetched_at": fetched_at,
+                            }
+                            filings_payload.append(filing_record)
+                            filing_meta = {
+                                "source_url": xml_url,
+                                "xml_sha256": xml_hash,
+                                "parser_version": FORM4_PARSER_VERSION,
+                                "fetched_at": fetched_at,
+                                "payload_sha256": filing_record.get("payload_sha256"),
+                            }
+                            batch_provenance.append(
+                                (
+                                    "edgar_filings",
+                                    {"accession_number": filing_record["accession_number"]},
+                                    filing_meta,
+                                )
+                            )
+                            for txn_record in _build_transaction_records(parsed):
+                                transactions_payload.append(txn_record)
+                                txn_key = {
+                                    "accession_number": txn_record["accession_number"],
+                                    "transaction_date": txn_record["transaction_date"],
+                                    "transaction_code": txn_record["transaction_code"],
+                                    "symbol": txn_record["symbol"],
+                                }
+                                batch_provenance.append(
+                                    ("insider_transactions", txn_key, filing_meta)
+                                )
+                        batch_filings = len(filings_payload)
+                        batch_transactions = len(transactions_payload)
+                        batch_span.set_attribute("filings", batch_filings)
+                        batch_span.set_attribute("transactions", batch_transactions)
+                        if persistence_available:
+                            total_filings += _persist_records(
+                                "edgar_filings", filings_payload, conflict="accession_number"
+                            )
+                            total_transactions += _persist_records(
+                                "insider_transactions",
+                                transactions_payload,
+                                conflict="accession_number,transaction_date,transaction_code,symbol",
+                            )
+                            for table_name, pk, meta in batch_provenance:
+                                record_provenance(table_name, pk, meta)
+                        else:
+                            total_filings += batch_filings
+                            total_transactions += batch_transactions
+                date_span.set_attribute("total_filings", total_filings)
+                date_span.set_attribute("total_transactions", total_transactions)
+            logger.info(
+                "%s -> %d filings persisted, %d transactions",
+                target_date,
+                total_filings,
+                total_transactions,
+            )
     return {"filings": total_filings, "transactions": total_transactions}
 
 

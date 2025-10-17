@@ -6,6 +6,7 @@ import json
 import os
 import time
 from collections.abc import Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache, wraps
@@ -14,6 +15,8 @@ from typing import Any, Callable, ParamSpec, TypeVar, cast  # noqa: UP035
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, validator
+
+from observability.otel import init_tracing
 
 ENV_URL_KEYS = ("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")
 ENV_KEY_KEYS = (
@@ -25,6 +28,16 @@ ENV_KEY_KEYS = (
 DEFAULT_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "model-artifacts")
 DEFAULT_RETRY_ATTEMPTS = int(os.getenv("SUPABASE_RETRY_ATTEMPTS", "3"))
 DEFAULT_RETRY_BACKOFF = float(os.getenv("SUPABASE_RETRY_BACKOFF", "0.5"))
+
+
+_TRACER = init_tracing("supabase-client")
+
+
+@contextmanager
+def _supabase_span(name: str, **attributes: Any):
+    payload = {key: value for key, value in attributes.items() if value is not None}
+    with _TRACER.start_as_current_span(name, attributes=payload) as span:
+        yield span
 
 
 class MissingSupabaseConfiguration(RuntimeError):
@@ -180,11 +193,17 @@ def insert_embeddings(records: Sequence[EmbeddingRecord | dict[str, Any]]) -> li
         serialized["id"] = str(serialized["id"])
         serialized["updated_at"] = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
         payload.append(serialized)
-    response = (
-        client.table("signal_embeddings")
-        .upsert(payload, on_conflict="asset_symbol,time_range,emb_type,emb_version")
-        .execute()
-    )
+    with _supabase_span(
+        "supabase.upsert",
+        table="signal_embeddings",
+        rows=len(payload),
+        on_conflict="asset_symbol,time_range,emb_type,emb_version",
+    ):
+        response = (
+            client.table("signal_embeddings")
+            .upsert(payload, on_conflict="asset_symbol,time_range,emb_type,emb_version")
+            .execute()
+        )
     data = getattr(response, "data", None)
     if data is None:
         return list(payload)
@@ -206,7 +225,12 @@ def nearest(
         "match_count": k,
         "filter": filter_params or {},
     }
-    response = client.rpc("match_signal_embeddings", payload).execute()
+    with _supabase_span(
+        "supabase.rpc",
+        function="match_signal_embeddings",
+        match_count=k,
+    ):
+        response = client.rpc("match_signal_embeddings", payload).execute()
     data = getattr(response, "data", None)
     if data is None:
         return []
@@ -236,7 +260,8 @@ def insert_backtest_result(result: BacktestResult | dict[str, Any]) -> dict[str,
     payload["id"] = str(payload["id"])
     payload["created_at"] = payload["created_at"].isoformat()
     client = get_supabase_client()
-    response = client.table("backtest_results").insert(payload).execute()
+    with _supabase_span("supabase.insert", table="backtest_results"):
+        response = client.table("backtest_results").insert(payload).execute()
     data = getattr(response, "data", None)
     if data is None:
         return payload
@@ -247,14 +272,15 @@ def list_failed_features(limit: int = 25) -> list[dict[str, Any]]:
     """Return feature registry rows marked as failed for quick triage."""
 
     client = get_supabase_client()
-    response = (
-        client.table("feature_registry")
-        .select("*")
-        .eq("status", "failed")
-        .order("updated_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
+    with _supabase_span("supabase.select", table="feature_registry", status="failed", limit=limit):
+        response = (
+            client.table("feature_registry")
+            .select("*")
+            .eq("status", "failed")
+            .order("updated_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
     return getattr(response, "data", [])
 
 
@@ -266,7 +292,8 @@ def insert_feature(
 
     payload = entry.as_dict() if isinstance(entry, FeatureRegistryEntry) else entry
     client = get_supabase_client()
-    response = client.table("feature_registry").upsert(payload, on_conflict="id").execute()
+    with _supabase_span("supabase.upsert", table="feature_registry", on_conflict="id"):
+        response = client.table("feature_registry").upsert(payload, on_conflict="id").execute()
     data = getattr(response, "data", None)
     if data is None:
         return payload
@@ -289,7 +316,13 @@ def store_artifact_json(path: str, content: dict[str, Any], *, bucket: str | Non
     storage = client.storage()
     bucket_client = storage.from_(bucket_name)
     payload = json.dumps(content, separators=(",", ":")).encode("utf-8")
-    bucket_client.upload(path, payload, {"content-type": "application/json", "upsert": "true"})
+    with _supabase_span(
+        "supabase.storage.upload",
+        bucket=bucket_name,
+        object_path=path,
+        content_type="application/json",
+    ):
+        bucket_client.upload(path, payload, {"content-type": "application/json", "upsert": "true"})
     return f"{bucket_name}/{path}"
 
 
@@ -301,11 +334,17 @@ def store_artifact_file(path: str, file_path: str, *, bucket: str | None = None)
     storage = client.storage()
     bucket_client = storage.from_(bucket_name)
     with open(file_path, "rb") as fh:
-        bucket_client.upload(
-            path,
-            fh,
-            {"content-type": "application/octet-stream", "upsert": "true"},
-        )
+        with _supabase_span(
+            "supabase.storage.upload",
+            bucket=bucket_name,
+            object_path=path,
+            content_type="application/octet-stream",
+        ):
+            bucket_client.upload(
+                path,
+                fh,
+                {"content-type": "application/octet-stream", "upsert": "true"},
+            )
     return f"{bucket_name}/{path}"
 
 
@@ -313,13 +352,14 @@ def fetch_agent_state(agent_id: str) -> dict[str, Any]:
     """Load serialized agent state from Supabase."""
 
     client = get_supabase_client()
-    response = (
-        client.table("agent_state")
-        .select("state")
-        .eq("agent_id", agent_id)
-        .limit(1)
-        .execute()
-    )
+    with _supabase_span("supabase.select", table="agent_state", agent_id=agent_id):
+        response = (
+            client.table("agent_state")
+            .select("state")
+            .eq("agent_id", agent_id)
+            .limit(1)
+            .execute()
+        )
     data = getattr(response, "data", [])
     if not data:
         return {}
@@ -331,28 +371,31 @@ def persist_agent_state(agent_id: str, state: dict[str, Any]) -> None:
 
     client = get_supabase_client()
     payload = {"agent_id": agent_id, "state": state, "updated_at": datetime.utcnow().isoformat()}
-    client.table("agent_state").upsert(payload, on_conflict="agent_id").execute()
+    with _supabase_span("supabase.upsert", table="agent_state", on_conflict="agent_id"):
+        client.table("agent_state").upsert(payload, on_conflict="agent_id").execute()
 
 
 def mark_embedding_job_complete(job_id: UUID | str) -> None:
     """Update an embedding job to completed in Supabase."""
 
     client = get_supabase_client()
-    client.table("embedding_jobs").update({"status": "completed"}).eq("id", str(job_id)).execute()
+    with _supabase_span("supabase.update", table="embedding_jobs", job_id=str(job_id)):
+        client.table("embedding_jobs").update({"status": "completed"}).eq("id", str(job_id)).execute()
 
 
 def list_pending_embedding_jobs(limit: int = 10) -> list[dict[str, Any]]:
     """Fetch pending embedding jobs awaiting processing."""
 
     client = get_supabase_client()
-    response = (
-        client.table("embedding_jobs")
-        .select("*")
-        .eq("status", "pending")
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
+    with _supabase_span("supabase.select", table="embedding_jobs", status="pending", limit=limit):
+        response = (
+            client.table("embedding_jobs")
+            .select("*")
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
     return getattr(response, "data", [])
 
 
