@@ -42,8 +42,8 @@ deployments:
     work_pool:
       <<: *docker_pool
     parameters:
-      date_from: null
-      date_to: null
+      date_from: "{{ (pendulum.now('UTC') - pendulum.duration(days=1)).to_date_string() }}"
+      date_to: "{{ (pendulum.now('UTC') - pendulum.duration(days=1)).to_date_string() }}"
     schedule:
       # cron: "15 1 * * *"
   - name: compute-offexchange
@@ -52,7 +52,7 @@ deployments:
     work_pool:
       <<: *docker_pool
     parameters:
-      trade_date: null
+      trade_date: "{{ (pendulum.now('UTC') - pendulum.duration(days=1)).to_date_string() }}"
       symbols: []
       persist: true
     schedule:
@@ -63,48 +63,13 @@ deployments:
     work_pool:
       <<: *docker_pool
     parameters:
-      trade_date: null
+      trade_date: "{{ (pendulum.now('UTC') - pendulum.duration(days=1)).to_date_string() }}"
       symbols: []
       persist: false
     schedule:
       # cron: "*/30 13-20 * * 1-5"
-  - name: fingerprints
-    flow_name: fingerprint-vectorization
-    entrypoint: flows/embeddings_and_fingerprints.py:fingerprint_vectorization
-    work_pool:
-      <<: *docker_pool
-    parameters:
-      asset_symbol: null
-      embedder_configs: []
-      numeric_features: null
-      feature_columns: []
-      metadata_columns: []
-      timestamps: []
-      base_metadata: {}
-      target_dim: 128
-      use_pca: true
-      table_name: signal_fingerprints
-    schedule:
-      # cron: "0 6 * * 1"
-  - name: similarity-scans
-    flow_name: signal-similarity-scan
-    entrypoint: flows/similarity_scans.py:similarity_scan_flow
-    work_pool:
-      <<: *docker_pool
-    parameters:
-      query_path: null
-      k: 5
-      output_dir: reports/similarity
-      user_filters: {}
-      allow_cross_symbol: false
-    schedule:
-      # cron: "30 2 * * *"
-  - name: backtest
-    flow_name: insider-prefiling-classifier-backtest
-    entrypoint: flows/backtest.py:insider_prefiling_backtest
-    work_pool:
-      <<: *docker_pool
-    parameters:
-      config: null
-    schedule:
-      # cron: "0 4 * * 6"
+#
+# Additional experimental flows (fingerprint vectorization, similarity scans, manual backtests)
+# require interactive parameter input and have been removed from the automatic deployment set.
+# They can be registered manually with `prefect deploy --select <name>` once parameter defaults
+# are defined.
