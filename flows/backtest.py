@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
+from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -36,6 +38,11 @@ try:
     from xgboost import XGBClassifier
 except Exception:  # pragma: no cover - optional dependency
     XGBClassifier = None  # type: ignore[assignment]
+
+try:
+    from catboost import CatBoostClassifier
+except Exception:  # pragma: no cover - optional dependency
+    CatBoostClassifier = None  # type: ignore[assignment]
 
 
 @dataclass(slots=True)
@@ -53,6 +60,8 @@ class InsiderBacktestConfig:
     window_symbol_column: str = "symbol"
     filing_date_column: str = "filing_date"
     filing_symbol_column: str = "symbol"
+    model: str = "lightgbm"
+    mode: str = "train"
 
 
 @dataclass(slots=True)
@@ -222,14 +231,33 @@ def _build_logistic_pipeline(random_state: int) -> Pipeline:
     )
 
 
-def get_model_specs(random_state: int) -> list[ModelSpec]:
-    specs: list[ModelSpec] = []
-    if XGBClassifier is not None:
-        specs.append(
-            ModelSpec(
-                name="xgboost",
-                implementation="xgboost.XGBClassifier",
-                builder=lambda: XGBClassifier(
+def choose_model(model_type: str, *, random_state: int, mode: str = "train") -> ModelSpec:
+    """Return a ``ModelSpec`` for the requested model and execution mode."""
+
+    normalized = model_type.lower()
+    if mode not in {"train", "tune"}:
+        raise ValueError("mode must be 'train' or 'tune'")
+
+    notes: str | None = None
+    implementation: str
+
+    def build_logistic() -> Pipeline:
+        return _build_logistic_pipeline(random_state)
+
+    if normalized == "xgboost":
+        if XGBClassifier is None:
+            implementation = "sklearn.linear_model.LogisticRegression"
+            notes = "xgboost package not installed; falling back to logistic regression"
+
+            def base_builder() -> Pipeline:
+                return build_logistic()
+
+            param_grid = {"clf__C": [0.1, 1.0, 10.0]}
+        else:
+            implementation = "xgboost.XGBClassifier"
+
+            def base_builder() -> object:
+                return XGBClassifier(
                     n_estimators=200,
                     max_depth=4,
                     learning_rate=0.05,
@@ -239,44 +267,77 @@ def get_model_specs(random_state: int) -> list[ModelSpec]:
                     random_state=random_state,
                     tree_method="hist",
                     use_label_encoder=False,
-                ),
-            )
-        )
-    else:
-        specs.append(
-            ModelSpec(
-                name="xgboost",
-                implementation="sklearn.linear_model.LogisticRegression",
-                builder=lambda: _build_logistic_pipeline(random_state),
-                notes="xgboost package not installed; falling back to logistic regression",
-            )
-        )
+                )
 
-    if LGBMClassifier is not None:
-        specs.append(
-            ModelSpec(
-                name="lightgbm",
-                implementation="lightgbm.LGBMClassifier",
-                builder=lambda: LGBMClassifier(
+            param_grid = {"n_estimators": [150, 250], "max_depth": [3, 4]}
+    elif normalized == "lightgbm":
+        if LGBMClassifier is None:
+            implementation = "sklearn.linear_model.LogisticRegression"
+            notes = "lightgbm package not installed; falling back to logistic regression"
+
+            def base_builder() -> Pipeline:
+                return build_logistic()
+
+            param_grid = {"clf__C": [0.1, 1.0, 10.0]}
+        else:
+            implementation = "lightgbm.LGBMClassifier"
+
+            def base_builder() -> object:
+                return LGBMClassifier(
                     n_estimators=300,
                     learning_rate=0.05,
                     num_leaves=31,
                     subsample=0.8,
                     colsample_bytree=0.8,
                     random_state=random_state,
-                ),
-            )
-        )
+                )
+
+            param_grid = {"n_estimators": [200, 350], "num_leaves": [31, 63]}
+    elif normalized == "catboost":
+        if CatBoostClassifier is None:
+            implementation = "sklearn.linear_model.LogisticRegression"
+            notes = "catboost package not installed; falling back to logistic regression"
+
+            def base_builder() -> Pipeline:
+                return build_logistic()
+
+            param_grid = {"clf__C": [0.1, 1.0, 5.0]}
+        else:
+            implementation = "catboost.CatBoostClassifier"
+
+            def base_builder() -> object:
+                return CatBoostClassifier(
+                    depth=6,
+                    learning_rate=0.05,
+                    iterations=300,
+                    loss_function="Logloss",
+                    random_state=random_state,
+                    verbose=False,
+                )
+
+            param_grid = {"depth": [4, 6], "learning_rate": [0.03, 0.06]}
     else:
-        specs.append(
-            ModelSpec(
-                name="lightgbm",
-                implementation="sklearn.linear_model.LogisticRegression",
-                builder=lambda: _build_logistic_pipeline(random_state),
-                notes="lightgbm package not installed; falling back to logistic regression",
+        raise ValueError(f"Unknown model_type '{model_type}'. Expected lightgbm, xgboost, or catboost.")
+
+    def builder() -> object:
+        estimator = base_builder()
+        if mode == "tune":
+            estimator = GridSearchCV(
+                estimator,
+                param_grid,
+                cv=3,
+                scoring="roc_auc",
+                n_jobs=1,
+                refit=True,
             )
-        )
-    return specs
+        return estimator
+
+    return ModelSpec(
+        name=normalized,
+        builder=builder,
+        implementation=implementation,
+        notes=notes,
+    )
 
 
 def _predict_proba(model: object, X: pd.DataFrame | np.ndarray) -> np.ndarray:
@@ -302,48 +363,49 @@ def train_and_evaluate(
     target_column: str,
     random_state: int,
     calibration_bins: int,
+    model_type: str,
+    mode: str,
 ) -> list[EvaluationResult]:
     X_train = train_df[feature_columns]
     y_train = train_df[target_column].astype(int)
     X_val = validation_df[feature_columns]
     y_val = validation_df[target_column].astype(int)
 
-    results: list[EvaluationResult] = []
-    for spec in get_model_specs(random_state):
-        model = spec.builder()
-        model.fit(X_train, y_train)
-        y_score = _predict_proba(model, X_val)
-        y_score = np.clip(y_score, 1e-9, 1 - 1e-9)
-        roc_auc = float(roc_auc_score(y_val, y_score))
-        avg_precision = float(average_precision_score(y_val, y_score))
-        pr_precision, pr_recall, _ = precision_recall_curve(y_val, y_score)
-        brier = float(brier_score_loss(y_val, y_score))
-        logloss = float(log_loss(y_val, y_score))
-        accuracy = float(accuracy_score(y_val, (y_score >= 0.5).astype(int)))
-        prob_true, prob_pred = calibration_curve(y_val, y_score, n_bins=calibration_bins, strategy="quantile")
+    spec = choose_model(model_type, random_state=random_state, mode=mode)
+    model = spec.builder()
+    model.fit(X_train, y_train)
+    y_score = _predict_proba(model, X_val)
+    y_score = np.clip(y_score, 1e-9, 1 - 1e-9)
+    roc_auc = float(roc_auc_score(y_val, y_score))
+    avg_precision = float(average_precision_score(y_val, y_score))
+    pr_precision, pr_recall, _ = precision_recall_curve(y_val, y_score)
+    brier = float(brier_score_loss(y_val, y_score))
+    logloss = float(log_loss(y_val, y_score))
+    accuracy = float(accuracy_score(y_val, (y_score >= 0.5).astype(int)))
+    prob_true, prob_pred = calibration_curve(y_val, y_score, n_bins=calibration_bins, strategy="quantile")
 
-        metrics = {
-            "roc_auc": roc_auc,
-            "average_precision": avg_precision,
-            "brier_score": brier,
-            "log_loss": logloss,
-            "accuracy": accuracy,
-            "calibration_true": prob_true.tolist(),
-            "calibration_pred": prob_pred.tolist(),
-            "precision_curve": pr_precision.tolist(),
-            "recall_curve": pr_recall.tolist(),
-        }
-        results.append(
-            EvaluationResult(
-                model_name=spec.name,
-                implementation=spec.implementation,
-                notes=spec.notes,
-                metrics=metrics,
-                y_true=y_val.to_numpy(),
-                y_score=y_score,
-            )
+    metrics = {
+        "roc_auc": roc_auc,
+        "average_precision": avg_precision,
+        "brier_score": brier,
+        "log_loss": logloss,
+        "accuracy": accuracy,
+        "calibration_true": prob_true.tolist(),
+        "calibration_pred": prob_pred.tolist(),
+        "precision_curve": pr_precision.tolist(),
+        "recall_curve": pr_recall.tolist(),
+    }
+
+    return [
+        EvaluationResult(
+            model_name=spec.name,
+            implementation=spec.implementation,
+            notes=spec.notes,
+            metrics=metrics,
+            y_true=y_val.to_numpy(),
+            y_score=y_score,
         )
-    return results
+    ]
 
 
 def _plot_roc(results: Sequence[EvaluationResult], path: Path) -> None:
@@ -462,6 +524,7 @@ def insider_prefiling_backtest(config: InsiderBacktestConfig) -> BacktestArtifac
     logger.info(
         "Training on %d samples, validating on %d samples", len(train_df), len(validation_df)
     )
+    logger.info("Using model=%s mode=%s", config.model, config.mode)
 
     results = train_and_evaluate(
         train_df,
@@ -470,6 +533,8 @@ def insider_prefiling_backtest(config: InsiderBacktestConfig) -> BacktestArtifac
         target_column="label",
         random_state=config.random_state,
         calibration_bins=config.calibration_bins,
+        model_type=config.model,
+        mode=config.mode,
     )
 
     report_dir = config.report_dir.expanduser().resolve()
@@ -494,4 +559,77 @@ def insider_prefiling_backtest(config: InsiderBacktestConfig) -> BacktestArtifac
     )
 
 
-__all__ = ["insider_prefiling_backtest", "InsiderBacktestConfig", "BacktestArtifacts"]
+__all__ = [
+    "insider_prefiling_backtest",
+    "InsiderBacktestConfig",
+    "BacktestArtifacts",
+    "choose_model",
+    "train_and_evaluate",
+]
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Return an argument parser exposing the backtest configuration knobs."""
+
+    parser = argparse.ArgumentParser(description=__doc__ or "Run the insider pre-filing backtest")
+    parser.add_argument("--windows", required=True, help="Path to the feature window dataset (CSV or Parquet)")
+    parser.add_argument("--filings", required=True, help="Path to the Form 4 filings dataset (CSV or Parquet)")
+    parser.add_argument("--label-horizon", type=int, default=5, help="Lookahead horizon in days for positive labels")
+    parser.add_argument(
+        "--validation-fraction",
+        type=float,
+        default=0.2,
+        help="Fraction of data reserved for validation",
+    )
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        default=Path("reports/backtests"),
+        help="Directory to store generated metrics and plots",
+    )
+    parser.add_argument("--random-state", type=int, default=42, help="Random seed for model training")
+    parser.add_argument("--calibration-bins", type=int, default=10, help="Number of bins for calibration curves")
+    parser.add_argument(
+        "--model",
+        choices=["lightgbm", "xgboost", "catboost"],
+        default="lightgbm",
+        help="Model to train",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["train", "tune"],
+        default="train",
+        help="Execution mode: standard training or hyperparameter tuning",
+    )
+    return parser
+
+
+def _main() -> None:
+    args = _build_arg_parser().parse_args()
+    config = InsiderBacktestConfig(
+        windows_path=Path(args.windows),
+        filings_path=Path(args.filings),
+        label_horizon_days=args.label_horizon,
+        validation_fraction=args.validation_fraction,
+        report_dir=args.report_dir,
+        random_state=args.random_state,
+        calibration_bins=args.calibration_bins,
+        model=args.model,
+        mode=args.mode,
+    )
+    artifacts = insider_prefiling_backtest(config)
+    print(
+        json.dumps(
+            {
+                "metrics_path": str(artifacts.metrics_path),
+                "roc_curve_path": str(artifacts.roc_curve_path),
+                "pr_curve_path": str(artifacts.pr_curve_path),
+                "calibration_path": str(artifacts.calibration_path),
+            },
+            indent=2,
+        )
+    )
+
+
+if __name__ == "__main__":
+    _main()

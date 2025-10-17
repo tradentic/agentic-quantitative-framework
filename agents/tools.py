@@ -15,6 +15,7 @@ from features.generate_ts2vec_embeddings import generate_ts2vec_features
 from framework.supabase_client import (
     BacktestResult,
     FeatureRegistryEntry,
+    MissingSupabaseConfiguration,
     get_supabase_client,
     insert_backtest_result,
     insert_embeddings,
@@ -197,8 +198,44 @@ def poll_embedding_jobs(limit: int = 5) -> list[dict[str, Any]]:
     return list_pending_embedding_jobs(limit=limit)
 
 
+def propose_feature_from_persistence(idea_payload: dict[str, Any]) -> dict[str, Any]:
+    """Record persistence-derived feature ideas in Supabase."""
+
+    required_fields = {"name", "insight"}
+    if missing := required_fields.difference(idea_payload):
+        raise ValueError(f"Missing required fields for persistence feature proposal: {sorted(missing)}")
+
+    metadata = idea_payload.get("metadata", {})
+    record = {
+        "name": idea_payload["name"],
+        "insight": idea_payload["insight"],
+        "source": idea_payload.get("source", "tda_persistence"),
+        "created_at": datetime.utcnow().isoformat(),
+        "metadata": metadata,
+    }
+
+    try:
+        client = get_supabase_client()
+    except MissingSupabaseConfiguration:
+        return {
+            "action": "propose_feature_from_persistence",
+            "record": record,
+            "persisted": False,
+            "reason": "Supabase not configured",
+        }
+
+    response = client.table("feature_ideas").insert(record).execute()
+    data = getattr(response, "data", None)
+    return {
+        "action": "propose_feature_from_persistence",
+        "record": data[0] if isinstance(data, list) and data else record,
+        "persisted": True,
+    }
+
+
 __all__ = [
     "poll_embedding_jobs",
+    "propose_feature_from_persistence",
     "propose_new_feature",
     "prune_vectors",
     "refresh_vector_store",

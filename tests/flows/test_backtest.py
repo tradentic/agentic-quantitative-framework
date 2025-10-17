@@ -112,3 +112,5 @@ def test_backtest_flow_creates_artifacts(tmp_path: Path, file_format: str) -> No
     assert "models" in payload
     assert payload["models"], "Expected at least one model entry"
     assert payload["config"]["label_horizon_days"] == 7
+    assert payload["config"]["model"] == "lightgbm"
+    assert payload["config"]["mode"] == "train"
