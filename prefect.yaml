@@ -12,6 +12,9 @@ deployments:
         image_pull_policy: IfNotPresent
         env:
           PREFECT_LOGGING_LEVEL: INFO
+          PREFECT_API_URL: "http://prefect-server-dev:4200/api"
+          PREFECT_UI_API_URL: "/api"
+          PREFECT_SERVER_UI_API_URL: "/api"
     parameters:
       limit: 5
     schedule:

@@ -161,6 +161,7 @@ start_prefect_worker_container() {
     --network "${prefect_docker_network}"
     -v /var/run/docker.sock:/var/run/docker.sock
     -e PREFECT_API_URL="http://${prefect_server_container}:4200/api"
+    -e PREFECT_SERVER_UI_API_URL="${prefect_ui_api_path}"
     -e PREFECT_UI_API_URL="${prefect_ui_api_path}"
   )
 
@@ -345,6 +346,7 @@ if [[ "${docker_available}" == "true" && "${prefect_cli_available}" == "true" ]]
       --name "${prefect_server_container}" \
       --network "${prefect_docker_network}" \
       --publish "${prefect_api_host_port}:4200" \
+      -e PREFECT_SERVER_UI_API_URL="${prefect_ui_api_path}" \
       -e PREFECT_UI_API_URL="${prefect_ui_api_path}" \
       "${prefect_docker_image}" \
       prefect server start --host 0.0.0.0 --port 4200 >/dev/null 2>&1 || {
@@ -412,3 +414,8 @@ if [[ "${prefect_ready}" == "true" && "${prefect_cli_available}" == "true" ]]; t
 fi
 
 # Env sync already handled prior to Prefect configuration
+
+prefect_verify_helper="${SCRIPT_DIR}/verify-prefect-setup.sh"
+if [[ -x "${prefect_verify_helper}" ]]; then
+  echo "[post-start] Run '${prefect_verify_helper}' to verify the Prefect stack."
+fi
