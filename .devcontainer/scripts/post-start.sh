@@ -86,35 +86,6 @@ sync_supabase_env() {
   fi
 }
 
-start_prefect_worker_process() {
-  local pool_name="$1"
-  local worker_type="$2"
-  local log_dir="${REPO_ROOT}/.prefect"
-  local log_file="${log_dir}/worker-${pool_name}.log"
-  local pid_file="${log_dir}/worker-${pool_name}.pid"
-  local worker_pattern="prefect worker start --pool ${pool_name}"
-
-  mkdir -p "${log_dir}"
-
-  local existing_pid
-  existing_pid="$(pgrep -f "${worker_pattern}" | head -n1 || true)"
-  if [[ -n "${existing_pid}" ]]; then
-    echo "[post-start] Prefect worker for pool '${pool_name}' already running (PID ${existing_pid})."
-    return 0
-  fi
-
-  echo "[post-start] Starting Prefect worker for pool '${pool_name}' (type: ${worker_type})."
-  nohup env \
-    PREFECT_API_URL="${prefect_api_default}" \
-    PREFECT_UI_API_URL="${prefect_ui_api_path}" \
-    prefect worker start --pool "${pool_name}" --type "${worker_type}" \
-    >>"${log_file}" 2>&1 &
-  local worker_pid="$!"
-  disown "${worker_pid}" 2>/dev/null || true
-  echo "${worker_pid}" >"${pid_file}"
-  echo "[post-start] Prefect worker PID ${worker_pid}; logging to ${log_file}."
-}
-
 start_prefect_worker_container() {
   local pool_name="$1"
   local worker_type="$2"
@@ -164,11 +135,12 @@ start_prefect_worker() {
   local pool_name="$1"
   local worker_type="$2"
 
-  if [[ "${worker_type}" == "docker" && "${docker_available}" == "true" ]]; then
-    start_prefect_worker_container "${pool_name}" "${worker_type}"
-  else
-    start_prefect_worker_process "${pool_name}" "${worker_type}"
+  if [[ "${docker_available}" != "true" ]]; then
+    echo "[post-start] Docker unavailable; cannot launch Prefect worker container '${prefect_worker_container}'." >&2
+    return 1
   fi
+
+  start_prefect_worker_container "${pool_name}" "${worker_type}"
 }
 
 if command -v docker >/dev/null 2>&1; then
