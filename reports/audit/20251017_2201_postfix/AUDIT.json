@@ -1,0 +1,158 @@
+{
+  "repo": {
+    "branch": "work",
+    "sha": "92d6601",
+    "dirty": true
+  },
+  "env": {
+    "needed": [
+      "SUPABASE_URL",
+      "DATABASE_URL",
+      "DEEPLOB_WEIGHTS_PATH",
+      "DEEPLOB_DEVICE"
+    ],
+    "present": [],
+    "missing": [
+      "SUPABASE_URL",
+      "DATABASE_URL",
+      "DEEPLOB_WEIGHTS_PATH",
+      "DEEPLOB_DEVICE"
+    ]
+  },
+  "db": {
+    "pgvector": false,
+    "tables": [
+      {
+        "name": "signal_embeddings",
+        "columns": [
+          {
+            "name": "embedding",
+            "type": "vector(128)"
+          }
+        ]
+      },
+      {
+        "name": "provenance_events",
+        "present": true
+      }
+    ],
+    "uniqueness": {
+      "daily_features": true,
+      "signal_fingerprints": true,
+      "signal_embeddings": true
+    }
+  },
+  "features": [
+    {
+      "module": "matrix_profile",
+      "present": true,
+      "engine_naive": true,
+      "engine_numba": "forced-naive",
+      "elapsed_ms": 138.55515099930926
+    },
+    {
+      "module": "change_points",
+      "present": true,
+      "elapsed_ms": 8.255697997810785
+    },
+    {
+      "module": "hawkes_features",
+      "present": true,
+      "elapsed_ms": 23.55673000056413
+    },
+    {
+      "module": "microstructure",
+      "present": true,
+      "elapsed_ms": 23.3502139999473
+    },
+    {
+      "module": "vpin",
+      "present": true,
+      "elapsed_ms": 6.528830999741331
+    },
+    {
+      "module": "ts2vec",
+      "present": true,
+      "fallback_used": true,
+      "elapsed_ms": 0.43739199827541597
+    },
+    {
+      "module": "minirocket_embeddings",
+      "numpy2_ok": true,
+      "sktime": "missing",
+      "raw_dim": null,
+      "pca_fingerprint_dim": 128,
+      "status": "dependency-missing"
+    },
+    {
+      "module": "deeplob_embeddings",
+      "present": false,
+      "status": "optional-missing"
+    }
+  ],
+  "prefect": {
+    "deployments": [
+      {
+        "name": "embedding-refresh-dev",
+        "entrypoint": "flows/embedding_flow.py:supabase_embedding_refresh",
+        "ls_seen": false
+      },
+      {
+        "name": "scheduled-backtest-dev",
+        "entrypoint": "flows/backtest_flow.py:scheduled_backtest_runner",
+        "ls_seen": false
+      },
+      {
+        "name": "nightly-prune-dev",
+        "entrypoint": "flows/prune_flow.py:scheduled_vector_prune",
+        "ls_seen": false
+      },
+      {
+        "name": "ingest-sec-form4",
+        "entrypoint": "flows/ingest_sec_form4.py:ingest_form4",
+        "ls_seen": false
+      },
+      {
+        "name": "compute-offexchange",
+        "entrypoint": "flows/compute_offexchange_features.py:compute_offexchange_features",
+        "ls_seen": false
+      },
+      {
+        "name": "compute-intraday",
+        "entrypoint": "flows/compute_intraday_features.py:compute_intraday_features",
+        "ls_seen": false
+      }
+    ],
+    "broken": [
+      "prefect deployments ls returned empty table on ephemeral server"
+    ]
+  },
+  "fingerprints": {
+    "dim": 128,
+    "audit_pass": true
+  },
+  "provenance": {
+    "table": true,
+    "insert_ok": false
+  },
+  "capabilities": {
+    "vector_store": "partial",
+    "ts2vec": "present",
+    "minirocket": "partial",
+    "deeplob": "optional",
+    "microstructure": "present",
+    "vpin": "present",
+    "matrix_profile": "present",
+    "hawkes": "present",
+    "similarity_scans": "partial",
+    "backtests": "partial",
+    "provenance": "partial",
+    "idempotency": "partial"
+  },
+  "questions": [
+    "Need SUPABASE_URL / DATABASE_URL to exercise database migrations and RPC smoke tests.",
+    "Provide DEEPLOB_WEIGHTS_PATH (or confirm absence) to run DeepLOB optional embedding pass.",
+    "Confirm target Prefect API for deployment registration (local temporary server showed zero deployments)."
+  ],
+  "notes": "Feature modules executed on synthetic data; database checks limited to schema review due to missing credentials."
+}
