@@ -21,7 +21,16 @@ values (
  on conflict do nothing;
 
 -- Signal embeddings sample vector
-insert into public.signal_embeddings (asset_symbol, time_range, embedding, regime_tag, label, meta)
+insert into public.signal_embeddings (
+  asset_symbol,
+  time_range,
+  embedding,
+  emb_type,
+  emb_version,
+  regime_tag,
+  label,
+  meta
+)
 values (
   'AAPL',
   tstzrange('2024-01-02 09:30:00+00','2024-01-02 16:00:00+00','[)'),
@@ -38,12 +47,16 @@ values (
     0.101,0.102,0.103,0.104,0.105,0.106,0.107,0.108,0.109,0.110,
     0.111,0.112,0.113,0.114,0.115,0.116,0.117,0.118,0.119,0.120,
     0.121,0.122,0.123,0.124,0.125,0.126,0.127,0.128]',
+  'ts2vec',
+  'v1',
   'demo',
   '{"y_next":0}',
   '{"notes":"seed"}'
 )
-on conflict (asset_symbol, time_range) do update set
+on conflict (asset_symbol, time_range, emb_type, emb_version) do update set
   embedding = excluded.embedding,
+  emb_type = excluded.emb_type,
+  emb_version = excluded.emb_version,
   regime_tag = excluded.regime_tag,
   label = excluded.label,
   meta = excluded.meta;

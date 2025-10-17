@@ -85,6 +85,7 @@ def generate_ts2vec_features(
 
     base_meta = {**(metadata or {}), "generated_at": datetime.utcnow().isoformat()}
     base_meta["embedding_dim"] = EMBEDDING_DIM
+    excluded_meta_keys = {"label", "emb_version", "emb_type"}
     rows: list[dict[str, Any]] = []
     for vector, timestamp in zip(embeddings, timestamps, strict=False):
         normalized_vector = _clamp_embedding(vector)
@@ -92,9 +93,11 @@ def generate_ts2vec_features(
             asset_symbol=asset_symbol,
             time_range=_format_time_range(timestamp, window_seconds),
             embedding=normalized_vector.tolist(),
+            emb_type="ts2vec",
+            emb_version=metadata.get("emb_version", "v1") if metadata else "v1",
             regime_tag=regime_tag,
             label=base_meta.get("label", {}),
-            meta={k: v for k, v in base_meta.items() if k != "label"},
+            meta={k: v for k, v in base_meta.items() if k not in excluded_meta_keys},
         )
         rows.append(record.dict())
     return rows
@@ -112,6 +115,8 @@ def fallback_identity_embeddings(
             asset_symbol=asset_symbol,
             time_range=_format_time_range(timestamp, 60),
             embedding=vector.tolist(),
+            emb_type="ts2vec",
+            emb_version="v1",
             meta={"embedding_dim": EMBEDDING_DIM},
         )
         rows.append(record.dict())

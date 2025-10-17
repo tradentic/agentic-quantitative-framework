@@ -7,7 +7,7 @@ import os
 import time
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache, wraps
 from importlib import import_module, util
 from typing import Any, Callable, ParamSpec, TypeVar, cast  # noqa: UP035
@@ -113,6 +113,8 @@ class EmbeddingRecord(BaseModel):
     asset_symbol: str
     time_range: str | tuple[str, str] | tuple[datetime, datetime]
     embedding: list[float]
+    emb_type: str = Field(default="ts2vec")
+    emb_version: str = Field(default="v1")
     regime_tag: str | None = None
     label: dict[str, Any] = Field(default_factory=dict)
     meta: dict[str, Any] = Field(default_factory=dict)
@@ -176,10 +178,11 @@ def insert_embeddings(records: Sequence[EmbeddingRecord | dict[str, Any]]) -> li
         model = record if isinstance(record, EmbeddingRecord) else EmbeddingRecord(**record)
         serialized = model.model_dump()
         serialized["id"] = str(serialized["id"])
+        serialized["updated_at"] = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
         payload.append(serialized)
     response = (
         client.table("signal_embeddings")
-        .upsert(payload, on_conflict="asset_symbol,time_range")
+        .upsert(payload, on_conflict="asset_symbol,time_range,emb_type,emb_version")
         .execute()
     )
     data = getattr(response, "data", None)
