@@ -53,6 +53,67 @@ PY
 supabase_ready=false
 docker_cli_present=false
 docker_available=false
+env_file_target="${REPO_ROOT}/.env.local"
+env_loaded=false
+env_synced=false
+
+load_env_file() {
+  local env_file="$1"
+  if [[ -f "${env_file}" ]]; then
+    echo "[post-start] Loading environment variables from ${env_file}."
+    # shellcheck disable=SC1090
+    set -a
+    source "${env_file}"
+    set +a
+    env_loaded=true
+  fi
+}
+
+sync_supabase_env() {
+  if [[ "${supabase_ready}" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ -x "${SCRIPT_DIR}/sync-supabase-env.mjs" ]]; then
+    echo "[post-start] Syncing .env.local from Supabase status..."
+    if "${SCRIPT_DIR}/sync-supabase-env.mjs" --out "${env_file_target}" >/dev/null 2>&1; then
+      env_synced=true
+    else
+      echo "[post-start] Failed to sync Supabase environment variables." >&2
+    fi
+  else
+    echo "[post-start] Env sync script not found/executable: ${SCRIPT_DIR}/sync-supabase-env.mjs" >&2
+  fi
+}
+
+start_prefect_worker() {
+  local pool_name="$1"
+  local worker_type="$2"
+  local log_dir="${REPO_ROOT}/.prefect"
+  local log_file="${log_dir}/worker-${pool_name}.log"
+  local pid_file="${log_dir}/worker-${pool_name}.pid"
+  local worker_pattern="prefect worker start --pool ${pool_name}"
+
+  mkdir -p "${log_dir}"
+
+  local existing_pid
+  existing_pid="$(pgrep -f "${worker_pattern}" | head -n1 || true)"
+  if [[ -n "${existing_pid}" ]]; then
+    echo "[post-start] Prefect worker for pool '${pool_name}' already running (PID ${existing_pid})."
+    return 0
+  fi
+
+  echo "[post-start] Starting Prefect worker for pool '${pool_name}' (type: ${worker_type})."
+  nohup env \
+    PREFECT_API_URL="${prefect_api_default}" \
+    PREFECT_UI_API_URL="${prefect_ui_api_path}" \
+    prefect worker start --pool "${pool_name}" --type "${worker_type}" \
+    >>"${log_file}" 2>&1 &
+  local worker_pid="$!"
+  disown "${worker_pid}" 2>/dev/null || true
+  echo "${worker_pid}" >"${pid_file}"
+  echo "[post-start] Prefect worker PID ${worker_pid}; logging to ${log_file}."
+}
 
 if command -v docker >/dev/null 2>&1; then
   docker_cli_present=true
@@ -89,6 +150,17 @@ else
   echo "[post-start] Supabase CLI not found on PATH; skipping Supabase startup." >&2
 fi
 
+sync_supabase_env || true
+
+if [[ -f "${env_file_target}" ]]; then
+  load_env_file "${env_file_target}"
+elif [[ -f "${REPO_ROOT}/.env" ]]; then
+  env_file_target="${REPO_ROOT}/.env"
+  load_env_file "${env_file_target}"
+else
+  echo "[post-start] No Supabase environment file found to load." >&2
+fi
+
 prefect_ready=false
 prefect_cli_available=false
 prefect_api_host_port="${PREFECT_API_HOST_PORT:-4200}"
@@ -100,7 +172,6 @@ prefect_pool_name="${PREFECT_WORK_POOL_NAME:-my-docker-pool}"
 prefect_worker_type="${PREFECT_WORKER_TYPE:-docker}"
 prefect_docker_network="${PREFECT_DOCKER_NETWORK:-prefect-dev}"
 prefect_server_container="${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}"
-prefect_worker_container="${PREFECT_WORKER_CONTAINER_NAME:-prefect-worker-${prefect_pool_name}}"
 
 prefect_version_detected="$(detect_prefect_version || true)"
 prefect_version_detected="${prefect_version_detected//[$'\r\n']}"
@@ -202,6 +273,9 @@ if [[ "${prefect_ready}" == "true" && "${prefect_cli_available}" == "true" ]]; t
   fi
 
   echo "[post-start] Deploying Prefect flows from prefect.yaml (Docker work pool)..."
+  if [[ "${env_loaded}" != "true" ]]; then
+    echo "[post-start] Warning: Supabase environment variables were not loaded before deployment." >&2
+  fi
   if PREFECT_CLI_PROMPT=false prefect deploy --all >/dev/null 2>&1; then
     echo "[post-start] Prefect deployments are up to date."
   else
@@ -209,37 +283,10 @@ if [[ "${prefect_ready}" == "true" && "${prefect_cli_available}" == "true" ]]; t
   fi
 
   if [[ "${docker_available}" == "true" ]]; then
-    if docker ps --filter "name=^/${prefect_worker_container}$" --format '{{.Names}}' | grep -Fxq "${prefect_worker_container}"; then
-      echo "[post-start] Prefect worker container '${prefect_worker_container}' already running."
-    else
-      echo "[post-start] Launching Prefect worker container '${prefect_worker_container}'."
-      docker run \
-        --detach \
-        --rm \
-        --name "${prefect_worker_container}" \
-        --network "${prefect_docker_network}" \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -e PREFECT_API_URL="http://${prefect_server_container}:4200/api" \
-        -e PREFECT_UI_API_URL="${prefect_ui_api_path}" \
-        "${prefect_docker_image}" \
-        prefect worker start --pool "${prefect_pool_name}" --type "${prefect_worker_type}" >/dev/null 2>&1 || {
-          echo "[post-start] Failed to launch Prefect worker container." >&2
-          docker logs "${prefect_worker_container}" 2>&1 || true
-        }
-    fi
+    start_prefect_worker "${prefect_pool_name}" "${prefect_worker_type}"
   else
-    echo "[post-start] Docker unavailable; skipping Prefect worker container startup." >&2
+    echo "[post-start] Docker unavailable; skipping Prefect worker startup." >&2
   fi
 fi
 
-# Directly call the env sync script (no package.json required)
-if [[ "${supabase_ready}" == "true" ]]; then
-  if [[ -x "${SCRIPT_DIR}/sync-supabase-env.mjs" ]]; then
-    echo "[post-start] Syncing .env.local from Supabase status..."
-    "${SCRIPT_DIR}/sync-supabase-env.mjs" --out ".env.local" || true
-  else
-    echo "[post-start] Env sync script not found/executable: ${SCRIPT_DIR}/sync-supabase-env.mjs" >&2
-  fi
-else
-  echo "[post-start] Skipping env sync because Supabase services are not available." >&2
-fi
+# Env sync already handled prior to Prefect configuration
