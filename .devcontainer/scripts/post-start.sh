@@ -200,7 +200,6 @@ prefect_pool_name="${PREFECT_WORK_POOL_NAME:-my-docker-pool}"
 prefect_worker_type="${PREFECT_WORKER_TYPE:-docker}"
 prefect_docker_network="${PREFECT_DOCKER_NETWORK:-prefect-dev}"
 prefect_server_container="${PREFECT_SERVER_CONTAINER_NAME:-prefect-server-dev}"
-prefect_worker_container="${PREFECT_WORKER_CONTAINER_NAME:-prefect-worker-${prefect_pool_name}}"
 
 prefect_version_detected="$(detect_prefect_version || true)"
 prefect_version_detected="${prefect_version_detected//[$'\r\n']}"
