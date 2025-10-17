@@ -6,7 +6,7 @@ import argparse
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 import json
 import math
@@ -89,7 +89,7 @@ class EvaluationResult:
     model_name: str
     implementation: str
     notes: str | None
-    metrics: dict[str, float]
+    metrics: dict[str, Any]
     y_true: np.ndarray
     y_score: np.ndarray
 
@@ -392,7 +392,7 @@ def train_and_evaluate(
     accuracy = float(accuracy_score(y_val, (y_score >= 0.5).astype(int)))
     prob_true, prob_pred = calibration_curve(y_val, y_score, n_bins=calibration_bins, strategy="quantile")
 
-    metrics = {
+    metrics: dict[str, Any] = {
         "roc_auc": roc_auc,
         "average_precision": avg_precision,
         "brier_score": brier,
@@ -402,6 +402,15 @@ def train_and_evaluate(
         "calibration_pred": prob_pred.tolist(),
         "precision_curve": pr_precision.tolist(),
         "recall_curve": pr_recall.tolist(),
+    }
+
+    metrics["feature_contribution_plan"] = {
+        "status": "reserved",
+        "intended_tooling": ["shap", "tda"],
+        "notes": (
+            "Placeholder for post-hoc feature contribution analysis. Populate with "
+            "SHAP/TDA outputs once explainability tooling is wired into the flow."
+        ),
     }
 
     return [
@@ -482,7 +491,7 @@ def write_metrics_json(
                 "name": result.model_name,
                 "implementation": result.implementation,
                 "notes": result.notes,
-                "metrics": {k: v for k, v in result.metrics.items() if isinstance(v, (float, int, list))},
+                "metrics": result.metrics,
             }
             for result in results
         ],
