@@ -17,7 +17,7 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
 | `agents/` | LangGraph chain entry points, tool definitions, and compatibility shims for Supabase + Prefect execution. |
 | `backtest/` | Portfolio and performance utilities for validating proposed signals, including sharpe/decay diagnostics consumed by agents. |
 | `features/` | Feature generation notebooks and scripts that persist embeddings and metadata to Supabase. |
-| `flows/` | Prefect 2.x flow definitions for recurring maintenance jobs such as vector pruning and retraining. |
+| `flows/` | Prefect 3.x flow definitions for recurring maintenance jobs such as vector pruning and retraining. |
 | `framework/` | Core client helpers (Supabase, logging, config) shared across agents, flows, and features. |
 | `supabase/` | Supabase configuration, migrations, and seed scripts for local development. |
 | `use_cases/` | Modular strategy packages (e.g., `insider_trading/`) that define task-specific pipelines and documentation. |

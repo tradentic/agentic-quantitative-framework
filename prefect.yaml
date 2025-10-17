@@ -1,4 +1,4 @@
-prefect-version: "2.14.0"
+prefect-version: "3.0.0"
 
 deployments:
   - name: embedding-refresh-dev
@@ -8,7 +8,7 @@ deployments:
       &docker_pool
       name: my-docker-pool
       job_variables:
-        image: "{{ env.get('PREFECT_WORK_POOL_IMAGE', 'prefecthq/prefect:3-latest') }}"
+        image: "{{ env.get('PREFECT_WORK_POOL_IMAGE', 'prefecthq/prefect:3-python3.11') }}"
         image_pull_policy: IfNotPresent
         env:
           PREFECT_LOGGING_LEVEL: INFO
