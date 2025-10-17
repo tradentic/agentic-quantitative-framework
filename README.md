@@ -2,6 +2,40 @@
 
 Supabase-first reference implementation for LangGraph-powered quantitative research agents. The framework coordinates GPT planners, Prefect automation, and Supabase pgvector storage so strategies can self-evaluate, retrain, and publish signals continuously.
 
+## 🧪 Quickstart: Run the SEC Insider Flow
+
+To run the full SEC Form 4 end-to-end pipeline locally or in Codespaces:
+
+1. ✅ Clone the repo and install Python deps:
+   ```bash
+   git clone https://github.com/tradentic/agentic-quantitative-framework.git
+   cd agentic-quantitative-framework
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -e .
+   ```
+
+2. 🛢 Start Supabase & seed minimal data:
+
+   ```bash
+   supabase start
+   supabase db reset --local
+   ```
+
+3. ⚙️ Start Prefect & apply flows:
+
+   ```bash
+   prefect server start --host 127.0.0.1 --port 4200  # in one terminal
+   prefect deployment apply prefect.yaml              # in another
+   ```
+
+4. 🚀 Run the insider-trading pipeline:
+
+   ```bash
+   python -m use_cases.insider_trading.pipeline --mode score --date 2024-12-31 --symbol ACME --mock
+   ```
+
+✅ This runs ingest → features → embeddings → fingerprints → scans → backtest, all driven by seed data.
+
 ## Architecture Overview
 
 - **Agentic planning loop** – `agents/langgraph_chain.py` orchestrates LangGraph tool calls that propose new features, trigger backtests, and manage vector pruning across use cases.
@@ -34,31 +68,4 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
 
 ## Getting Started
 
-1. Bootstrap the Python environment:
-   ```bash
-   make dev  # creates .venv and installs project dependencies
-   ```
-2. Configure environment variables:
-   ```bash
-   cp .env.example .env
-   ```
-   Update Supabase keys and LangGraph credentials as described in [`LOCAL_DEV_SETUP.md`](LOCAL_DEV_SETUP.md).
-3. Launch Supabase locally:
-   ```bash
-   supabase start
-   ```
-4. Run migrations and seed data (optional but recommended):
-   ```bash
-   supabase db reset
-   ```
-5. Start Prefect services and register flows:
-   ```bash
-   prefect server start &
-   prefect deployment apply prefect.yaml
-   ```
-6. Validate the agent graph wiring:
-   ```bash
-   python -c "from agents import build_langgraph_chain; build_langgraph_chain()"
-   ```
-
-Explore the [docs site](docs/) for architecture diagrams, operational runbooks, and troubleshooting tips once the local environment is running.
+Follow the [Quickstart](#-quickstart-run-the-sec-insider-flow) above for a minimal end-to-end demo, then dive into [`docs/setup/local_dev.md`](docs/setup/local_dev.md) for deeper Supabase, Prefect, and environment guidance. Explore the [docs site](docs/) for architecture diagrams, operational runbooks, and troubleshooting tips once the local environment is running.
