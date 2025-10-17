@@ -29,6 +29,9 @@ dependencies = [
 tests = [
     "pytest>=7.4.0",
 ]
+embeddings = [
+    "sktime>=0.26",
+]
 
 [tool.setuptools.packages.find]
 include = [
