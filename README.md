@@ -4,7 +4,7 @@ Supabase-first reference implementation for LangGraph-powered quantitative resea
 
 ## 🧪 Quickstart: Run the SEC Insider Flow
 
-To run the full SEC Form 4 end-to-end pipeline locally or in Codespaces:
+Spin up the core services locally or in Codespaces, then choose how you want to validate the stack:
 
 1. ✅ Clone the repo and install Python deps:
    ```bash
@@ -28,13 +28,21 @@ To run the full SEC Form 4 end-to-end pipeline locally or in Codespaces:
    prefect deployment apply prefect.yaml              # in another
    ```
 
-4. 🚀 Run the insider-trading pipeline:
+4. 🚀 Choose your first run:
 
-   ```bash
-   python -m use_cases.insider_trading.pipeline --mode score --date 2024-12-31 --symbol ACME --mock
-   ```
+   - **SEC insider trading pipeline** – full ingest → features → embeddings → fingerprints → scans → backtest with seed data:
 
-✅ This runs ingest → features → embeddings → fingerprints → scans → backtest, all driven by seed data.
+     ```bash
+     python -m use_cases.insider_trading.pipeline --mode score --date 2024-12-31 --symbol ACME --mock
+     ```
+
+   - **Validate the agent graph wiring** – ensure LangGraph builds cleanly with the configured services:
+
+     ```bash
+     python -c "from agents import build_langgraph_chain; build_langgraph_chain()"
+     ```
+
+Either option verifies your Supabase + Prefect environment is ready for deeper workflows.
 
 ## Architecture Overview
 
