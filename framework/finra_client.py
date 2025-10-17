@@ -12,6 +12,8 @@ from datetime import date
 from functools import lru_cache
 from typing import Any
 
+from utils.symbols import coerce_symbol_case
+
 import requests
 
 FINRA_BASE_URL = os.getenv("FINRA_BASE_URL", "https://cdn.finra.org/equity")
@@ -217,7 +219,7 @@ def _parse_short_volume(content: str, trade_date: date) -> dict[str, FinraShortV
     records: dict[str, FinraShortVolume] = {}
     for row in reader:
         normalized = {_normalize_key(key): value for key, value in row.items()}
-        symbol = str(normalized.get("symbol", "")).strip().upper()
+        symbol = coerce_symbol_case(normalized.get("symbol"))
         if not symbol:
             continue
         short_volume = _to_int(normalized.get("short_volume"))
@@ -249,7 +251,7 @@ def get_short_volume(symbol: str, trade_date: date) -> FinraShortVolume | None:
     """Return the FINRA short volume record for a given symbol and date."""
 
     records = _short_volume_by_symbol(trade_date)
-    return records.get(symbol.upper())
+    return records.get(coerce_symbol_case(symbol))
 
 
 def _build_ats_urls(week_ending: date) -> list[str]:
@@ -265,7 +267,7 @@ def _parse_ats_week(content: str, week_ending: date) -> dict[str, FinraAtsWeek]:
     aggregates: dict[str, dict[str, Any]] = {}
     for row in reader:
         normalized = {_normalize_key(key): value for key, value in row.items()}
-        symbol = str(normalized.get("symbol", "")).strip().upper()
+        symbol = coerce_symbol_case(normalized.get("symbol"))
         if not symbol:
             continue
         share_volume = _to_int(

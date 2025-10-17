@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pytest
 
@@ -24,6 +25,8 @@ from use_cases.insider_trading.pipeline import (
     run_fingerprints,
     run_scans,
 )
+from utils.config import ModuleDefault as ConfigModuleDefault
+from utils.config import ModuleEntry as ConfigModuleEntry
 
 
 def test_load_pipeline_config_merges_defaults(tmp_path: Path) -> None:
@@ -111,6 +114,52 @@ def test_pipeline_fail_fast(tmp_path: Path) -> None:
     results = pipeline.run(runtime_nonfatal)
     assert results["alpha"]["status"] == "error"
     assert "boom" in results["alpha"]["error"]
+
+
+def test_pipeline_applies_schedule_override() -> None:
+    captured: dict[str, Any] = {}
+
+    def runner(runtime: PipelineRuntime, options: Mapping[str, Any]) -> dict[str, Any]:
+        captured.update(options)
+        return {"status": "ok"}
+
+    base_config = PipelineConfig(
+        module_defaults={"alpha": ModuleDefaults(enabled=True, options={"foo": 1})},
+        modes={"score": (ModuleExecutionConfig(name="alpha"),)},
+    )
+    raw_config = {
+        "module_defaults": {
+            "alpha": ConfigModuleDefault(enabled=True, options={"foo": 1})
+        },
+        "modes": {
+            "score": (ConfigModuleEntry(name="alpha", enabled_override=None, options={}),)
+        },
+        "schedule_overrides": {
+            "2024-01-02": {
+                "module_defaults": {
+                    "alpha": ConfigModuleDefault(enabled=True, options={"foo": 5})
+                },
+                "modes": {
+                    "score": (
+                        ConfigModuleEntry(
+                            name="alpha", enabled_override=True, options={"bar": 3}
+                        ),
+                    )
+                },
+            }
+        },
+    }
+    pipeline = InsiderTradingPipeline(
+        config=base_config,
+        registry={
+            "alpha": PipelineStep(name="alpha", description="alpha", runner=runner)
+        },
+        raw_config=raw_config,
+    )
+    runtime = PipelineRuntime(mode="score", trade_date=date(2024, 1, 2), date_from=None, date_to=None)
+    results = pipeline.run(runtime)
+    assert results["alpha"]["status"] == "ok"
+    assert captured == {"foo": 5, "bar": 3}
 
 
 def test_run_fingerprints_uses_daily_features(monkeypatch: pytest.MonkeyPatch) -> None:

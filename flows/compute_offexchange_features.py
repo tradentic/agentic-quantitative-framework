@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from prefect import flow, get_run_logger, task
 
 from framework.finra_client import FINRA_SHORT_VOLUME_MARKET, get_ats_week, get_short_volume
 from framework.provenance import OFFEX_FEATURE_VERSION, hash_bytes, record_provenance
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.symbols import normalize_symbol_list
 
 
 FINRA_BASE_URL = os.getenv("FINRA_BASE_URL", "https://cdn.finra.org/equity")
@@ -25,16 +26,11 @@ def _week_ending(trade_date: date) -> date:
     return trade_date + timedelta(days=offset)
 
 
-def _normalize_symbols(symbols: Iterable[str]) -> list[str]:
-    unique = {symbol.strip().upper() for symbol in symbols if symbol and symbol.strip()}
-    return sorted(unique)
-
-
 @task
 def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = None) -> list[str]:
     logger = get_run_logger()
     if symbols:
-        normalized = _normalize_symbols(symbols)
+        normalized = normalize_symbol_list(symbols)
         logger.info("Using %d provided symbols for %s", len(normalized), trade_date)
         return normalized
     try:
@@ -50,7 +46,7 @@ def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = Non
         .execute()
     )
     data = getattr(response, "data", None) or []
-    normalized = _normalize_symbols(row.get("symbol", "") for row in data)
+    normalized = normalize_symbol_list((row.get("symbol", "") for row in data))
     logger.info("Fetched %d symbols from daily_features for %s", len(normalized), trade_date)
     return normalized
 
