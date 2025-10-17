@@ -22,10 +22,10 @@ class _InMemorySupabaseClient:
     """Very small in-memory stand-in for the Supabase Python client."""
 
     def __init__(self) -> None:
-        self._tables: dict[str, dict[tuple[str, str] | str, dict[str, object]]] = {}
+        self._tables: dict[str, list[dict[str, object]]] = {}
 
     def table(self, name: str) -> "_TableAdapter":
-        self._tables.setdefault(name, {})
+        self._tables.setdefault(name, [])
         return _TableAdapter(self, name)
 
     def transaction(self) -> "_Transaction":
@@ -35,9 +35,7 @@ class _InMemorySupabaseClient:
 class _Transaction:
     def __init__(self, client: _InMemorySupabaseClient) -> None:
         self._client = client
-        self._snapshot: dict[str, dict[tuple[str, str] | str, dict[str, object]]] = copy.deepcopy(
-            client._tables
-        )
+        self._snapshot: dict[str, list[dict[str, object]]] = copy.deepcopy(client._tables)
 
     def __enter__(self) -> _InMemorySupabaseClient:
         return self._client
@@ -54,19 +52,17 @@ class _TableAdapter:
         self._name = name
         self._result: list[dict[str, object]] = []
 
-    def upsert(self, rows, on_conflict=None):  # type: ignore[no-untyped-def]
+    def insert(self, rows):  # type: ignore[no-untyped-def]
         records = rows if isinstance(rows, list) else [rows]
         table = self._client._tables[self._name]
         for row in records:
-            record = dict(row)
-            key = (record.get("table_name"), record.get("record_id"))
-            table[key] = record
-        self._result = list(table.values())
+            table.append(dict(row))
+        self._result = list(table)
         return self
 
     def select(self, _columns="*"):
         table = self._client._tables[self._name]
-        self._result = list(table.values())
+        self._result = list(table)
         return self
 
     def execute(self):  # type: ignore[no-untyped-def]
@@ -104,12 +100,14 @@ def test_provenance_round_trip(transactional_supabase_client, monkeypatch: pytes
     rows = response.data
     assert len(rows) == 1
     record = rows[0]
-    assert record["table_name"] == "edgar_filings"
-    assert record["record_id"] == "0000123456-24-000001"
-    meta = record["meta"]
+    assert record["source"] == "edgar_filings"
+    assert record["source_url"].endswith("primary_doc.xml")
+    assert record["parser_version"] == provenance.FORM4_PARSER_VERSION
+    assert record["artifact_sha256"] == "d5a1f28b39b0eae8e6a4df7fcb5a0aa32a4ed3d8f4e5c1d5a1475413b90fd0a8"
+    body = record["payload"]
+    assert body["record_id"] == "0000123456-24-000001"
+    meta = body["meta"]
     assert isinstance(meta, dict)
-    assert meta["parser_version"] == provenance.FORM4_PARSER_VERSION
-    assert meta["source_url"].endswith("primary_doc.xml")
     assert meta["observed_at"] == observed_at
+    assert meta["parser_version"] == provenance.FORM4_PARSER_VERSION
     assert "fetched_at" in meta
-    assert record["observed_at"].endswith("+00:00")

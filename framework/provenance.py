@@ -58,22 +58,37 @@ def _sanitize_meta(meta: Mapping[str, Any] | None) -> MutableMapping[str, Any]:
     return payload
 
 
-def record_provenance(table: str, pk: Any, meta: Mapping[str, Any] | None = None) -> None:
-    """Persist a provenance row associated with a Supabase table record."""
+def record_provenance(source: str, pk: Any, meta: Mapping[str, Any] | None = None) -> None:
+    """Persist a provenance row associated with a Supabase record."""
 
     metadata = _sanitize_meta(meta)
     metadata.setdefault("fetched_at", datetime.now(timezone.utc).isoformat())
-    payload = {
-        "table_name": table,
-        "record_id": _normalize_pk(pk),
-        "meta": metadata,
-        "observed_at": datetime.now(timezone.utc).isoformat(),
+    metadata.setdefault("observed_at", datetime.now(timezone.utc).isoformat())
+
+    source_url = metadata.get("source_url")
+    parser_version = metadata.get("parser_version")
+    artifact_sha256 = metadata.get("artifact_sha256") or metadata.get("payload_sha256")
+
+    payload: MutableMapping[str, Any] = {"record_id": _normalize_pk(pk)}
+    if metadata:
+        payload["meta"] = metadata
+
+    row: MutableMapping[str, Any] = {
+        "source": source,
+        "payload": payload,
     }
+    if source_url is not None:
+        row["source_url"] = source_url
+    if artifact_sha256 is not None:
+        row["artifact_sha256"] = artifact_sha256
+    if parser_version is not None:
+        row["parser_version"] = parser_version
+
     try:
         client = get_supabase_client()
     except MissingSupabaseConfiguration:
         return
-    client.table(PROVENANCE_TABLE).upsert(payload, on_conflict="table_name,record_id").execute()
+    client.table(PROVENANCE_TABLE).insert(row).execute()
 
 
 __all__ = [
