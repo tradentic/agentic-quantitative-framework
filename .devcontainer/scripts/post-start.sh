@@ -86,33 +86,61 @@ sync_supabase_env() {
   fi
 }
 
-start_prefect_worker() {
+start_prefect_worker_container() {
   local pool_name="$1"
   local worker_type="$2"
-  local log_dir="${REPO_ROOT}/.prefect"
-  local log_file="${log_dir}/worker-${pool_name}.log"
-  local pid_file="${log_dir}/worker-${pool_name}.pid"
-  local worker_pattern="prefect worker start --pool ${pool_name}"
 
-  mkdir -p "${log_dir}"
-
-  local existing_pid
-  existing_pid="$(pgrep -f "${worker_pattern}" | head -n1 || true)"
-  if [[ -n "${existing_pid}" ]]; then
-    echo "[post-start] Prefect worker for pool '${pool_name}' already running (PID ${existing_pid})."
+  if docker ps --filter "name=^/${prefect_worker_container}$" --format '{{.Names}}' | grep -Fxq "${prefect_worker_container}"; then
+    echo "[post-start] Prefect worker container '${prefect_worker_container}' already running."
     return 0
   fi
 
-  echo "[post-start] Starting Prefect worker for pool '${pool_name}' (type: ${worker_type})."
-  nohup env \
-    PREFECT_API_URL="${prefect_api_default}" \
-    PREFECT_UI_API_URL="${prefect_ui_api_path}" \
-    prefect worker start --pool "${pool_name}" --type "${worker_type}" \
-    >>"${log_file}" 2>&1 &
-  local worker_pid="$!"
-  disown "${worker_pid}" 2>/dev/null || true
-  echo "${worker_pid}" >"${pid_file}"
-  echo "[post-start] Prefect worker PID ${worker_pid}; logging to ${log_file}."
+  echo "[post-start] Launching Prefect worker container '${prefect_worker_container}' (type: ${worker_type})."
+
+  local docker_args=(
+    docker run
+    --detach
+    --rm
+    --name "${prefect_worker_container}"
+    --network "${prefect_docker_network}"
+    -v /var/run/docker.sock:/var/run/docker.sock
+    -e PREFECT_API_URL="http://${prefect_server_container}:4200/api"
+    -e PREFECT_UI_API_URL="${prefect_ui_api_path}"
+  )
+
+  if [[ -f "${env_file_target}" ]]; then
+    docker_args+=(--env-file "${env_file_target}")
+  fi
+
+  docker_args+=(
+    "${prefect_docker_image}"
+    prefect
+    worker
+    start
+    --pool
+    "${pool_name}"
+    --type
+    "${worker_type}"
+  )
+
+  if "${docker_args[@]}" >/dev/null 2>&1; then
+    echo "[post-start] Prefect worker container '${prefect_worker_container}' is running."
+  else
+    echo "[post-start] Failed to launch Prefect worker container '${prefect_worker_container}'." >&2
+    docker logs "${prefect_worker_container}" 2>&1 || true
+  fi
+}
+
+start_prefect_worker() {
+  local pool_name="$1"
+  local worker_type="$2"
+
+  if [[ "${docker_available}" != "true" ]]; then
+    echo "[post-start] Docker unavailable; cannot launch Prefect worker container '${prefect_worker_container}'." >&2
+    return 1
+  fi
+
+  start_prefect_worker_container "${pool_name}" "${worker_type}"
 }
 
 if command -v docker >/dev/null 2>&1; then
