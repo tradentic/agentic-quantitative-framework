@@ -52,6 +52,11 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     CatBoostClassifier = None  # type: ignore[assignment]
 
+try:
+    from tabpfn import TabPFNClassifier
+except Exception:  # pragma: no cover - optional dependency
+    TabPFNClassifier = None  # type: ignore[assignment]
+
 
 @dataclass(slots=True)
 class InsiderBacktestConfig:
@@ -324,8 +329,30 @@ def choose_model(model_type: str, *, random_state: int, mode: str = "train") -> 
                 )
 
             param_grid = {"depth": [4, 6], "learning_rate": [0.03, 0.06]}
+    elif normalized == "tabpfn":
+        if TabPFNClassifier is None:
+            implementation = "sklearn.linear_model.LogisticRegression"
+            notes = "tabpfn package not installed; falling back to logistic regression"
+
+            def base_builder() -> Pipeline:
+                return build_logistic()
+
+            param_grid = {"clf__C": [0.1, 1.0, 10.0]}
+        else:
+            implementation = "tabpfn.TabPFNClassifier"
+
+            def base_builder() -> object:
+                return TabPFNClassifier(
+                    N_ensemble_configurations=32,
+                    device="cpu",
+                    random_state=random_state,
+                )
+
+            param_grid = {"N_ensemble_configurations": [16, 32]}
     else:
-        raise ValueError(f"Unknown model_type '{model_type}'. Expected lightgbm, xgboost, or catboost.")
+        raise ValueError(
+            f"Unknown model_type '{model_type}'. Expected lightgbm, xgboost, catboost, or tabpfn."
+        )
 
     def builder() -> object:
         estimator = base_builder()
@@ -639,7 +666,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--calibration-bins", type=int, default=10, help="Number of bins for calibration curves")
     parser.add_argument(
         "--model",
-        choices=["lightgbm", "xgboost", "catboost"],
+        choices=["lightgbm", "xgboost", "catboost", "tabpfn"],
         default="lightgbm",
         help="Model to train",
     )
