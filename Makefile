@@ -1,4 +1,4 @@
-.PHONY: dev supabase resetdb pushdb prefect lint test docs flows setup-supabase-env
+.PHONY: dev supabase resetdb pushdb prefect lint test docs flows setup-supabase-env prefect-deploy prefect-ls
 
 VENV ?= .venv
 PYTHON ?= python3
@@ -37,7 +37,13 @@ docs:
 flows:
 	prefect deployment apply prefect.yaml
 
+prefect-deploy:
+	prefect deploy --prefect-file prefect.yaml
+
+prefect-ls:
+	prefect deployments ls || true
+
 setup-supabase-env:
-	cp .env.example .env.local
-	node .devcontainer/scripts/sync-supabase-env.mjs
+        cp .env.example .env.local
+        node .devcontainer/scripts/sync-supabase-env.mjs
 	@echo "Update .env with your Supabase keys and project reference."
