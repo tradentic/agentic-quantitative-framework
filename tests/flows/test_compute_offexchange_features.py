@@ -52,6 +52,10 @@ def test_persist_features_adds_provenance(monkeypatch: pytest.MonkeyPatch):
         "flows.compute_offexchange_features.get_supabase_client",
         lambda: dummy,
     )
+    monkeypatch.setattr(
+        "flows.compute_offexchange_features.get_run_logger",
+        lambda: logging.getLogger("test"),
+    )
     rows = [
         {
             "symbol": "ACME",
@@ -61,7 +65,7 @@ def test_persist_features_adds_provenance(monkeypatch: pytest.MonkeyPatch):
             "ats_share_of_total": 0.25,
         }
     ]
-    persisted = persist_features(date(2024, 12, 30), date(2024, 12, 31), rows)
+    persisted = persist_features.fn(date(2024, 12, 30), date(2024, 12, 31), rows)
     assert persisted == 1
     name, payload, conflict = dummy.log[0]
     assert name == "daily_features"
