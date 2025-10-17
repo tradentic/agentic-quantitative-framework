@@ -10,72 +10,26 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-import yaml
-
 from features.pca_fingerprint import PCA_COMPONENTS
 
 from framework.provenance import OFFEX_FEATURE_VERSION
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
 from use_cases.base import StrategyUseCase, UseCaseRequest
+from utils.config import (
+    ModuleDefaults,
+    ModuleExecutionConfig,
+    PipelineConfig,
+    ResolvedModuleConfig,
+    get_config_for_date,
+    load_pipeline_config as _load_pipeline_config,
+)
 from utils.guards import SkipStep
+from utils.symbols import coerce_symbol_case, normalize_symbol_list
 
 logger = logging.getLogger(__name__)
 
 ModuleResult = dict[str, Any]
 Runner = Callable[["PipelineRuntime", Mapping[str, Any]], ModuleResult]
-
-
-@dataclass(frozen=True)
-class ModuleDefaults:
-    """Default enablement and options for a pipeline module."""
-
-    enabled: bool = True
-    options: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ModuleExecutionConfig:
-    """Configuration parsed from the YAML file for a single module entry."""
-
-    name: str
-    enabled_override: bool | None = None
-    options: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ResolvedModuleConfig:
-    """Configuration that is ready to be executed by the pipeline."""
-
-    name: str
-    enabled: bool
-    options: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class PipelineConfig:
-    """Container for module defaults and mode execution plans."""
-
-    module_defaults: dict[str, ModuleDefaults]
-    modes: dict[str, tuple[ModuleExecutionConfig, ...]]
-
-    def modules_for_mode(self, mode: str) -> tuple[ResolvedModuleConfig, ...]:
-        """Return the module sequence for the requested mode."""
-
-        if mode not in self.modes:
-            raise KeyError(f"Mode '{mode}' is not defined in the pipeline configuration")
-        resolved: list[ResolvedModuleConfig] = []
-        for entry in self.modes[mode]:
-            defaults = self.module_defaults.get(entry.name, ModuleDefaults())
-            enabled = defaults.enabled if entry.enabled_override is None else entry.enabled_override
-            options = _merge_options(defaults.options, entry.options)
-            resolved.append(
-                ResolvedModuleConfig(
-                    name=entry.name,
-                    enabled=enabled,
-                    options=options,
-                )
-            )
-        return tuple(resolved)
 
 
 @dataclass(frozen=True)
@@ -114,19 +68,6 @@ class PipelineStep:
 
 class PipelineExecutionError(RuntimeError):
     """Raised when a module fails during pipeline execution."""
-
-
-def _merge_options(
-    defaults: Mapping[str, Any] | None, overrides: Mapping[str, Any] | None
-) -> dict[str, Any]:
-    merged: dict[str, Any] = {}
-    if defaults:
-        merged.update(defaults)
-    if overrides:
-        merged.update(overrides)
-    return merged
-
-
 def _coerce_date(value: Any) -> date | None:
     if value is None:
         return None
@@ -142,12 +83,8 @@ def _coerce_date(value: Any) -> date | None:
 def _coerce_symbols(symbols: Sequence[str] | None) -> tuple[str, ...]:
     if not symbols:
         return ()
-    normalized = {
-        symbol.strip().upper()
-        for symbol in symbols
-        if symbol and symbol.strip()
-    }
-    return tuple(sorted(normalized))
+    normalized = normalize_symbol_list(symbols)
+    return tuple(normalized)
 
 
 def _should_mock(runtime: PipelineRuntime, options: Mapping[str, Any]) -> bool:
@@ -155,62 +92,9 @@ def _should_mock(runtime: PipelineRuntime, options: Mapping[str, Any]) -> bool:
 
 
 def load_pipeline_config(path: str | Path) -> PipelineConfig:
-    """Load the pipeline configuration from a YAML file."""
+    """Proxy to the shared pipeline configuration loader."""
 
-    with Path(path).open("r", encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
-    if not isinstance(raw, dict):
-        raise ValueError("Pipeline configuration must be a mapping")
-    raw_defaults = raw.get("module_defaults", {})
-    if not isinstance(raw_defaults, dict):
-        raise ValueError("module_defaults must be a mapping")
-    module_defaults: dict[str, ModuleDefaults] = {}
-    for name, payload in raw_defaults.items():
-        if payload is None:
-            module_defaults[name] = ModuleDefaults()
-            continue
-        if not isinstance(payload, dict):
-            raise ValueError(f"module_defaults entry for {name} must be a mapping")
-        enabled = payload.get("enabled")
-        options = payload.get("options")
-        module_defaults[name] = ModuleDefaults(
-            enabled=bool(enabled) if enabled is not None else True,
-            options=dict(options or {}),
-        )
-    raw_modes = raw.get("modes", {})
-    if not isinstance(raw_modes, dict):
-        raise ValueError("modes must be a mapping")
-    modes: dict[str, tuple[ModuleExecutionConfig, ...]] = {}
-    for mode_name, entries in raw_modes.items():
-        if entries is None:
-            modes[mode_name] = tuple()
-            continue
-        if not isinstance(entries, Sequence) or isinstance(entries, (str, bytes)):
-            raise ValueError(f"Mode '{mode_name}' must be a sequence of module entries")
-        normalized: list[ModuleExecutionConfig] = []
-        for entry in entries:
-            normalized.append(_normalize_module_entry(entry))
-        modes[mode_name] = tuple(normalized)
-    return PipelineConfig(module_defaults=module_defaults, modes=modes)
-
-
-def _normalize_module_entry(entry: Any) -> ModuleExecutionConfig:
-    if isinstance(entry, str):
-        return ModuleExecutionConfig(name=entry)
-    if not isinstance(entry, Mapping):
-        raise ValueError("Module entries must be strings or mappings")
-    name = entry.get("name") or entry.get("module")
-    if not name:
-        raise ValueError("Module entries must declare a name")
-    enabled = entry.get("enabled")
-    options = entry.get("options")
-    return ModuleExecutionConfig(
-        name=str(name),
-        enabled_override=bool(enabled) if enabled is not None else None,
-        options=dict(options or {}),
-    )
-
-
+    return _load_pipeline_config(path)
 def _resolve_ingest_dates(runtime: PipelineRuntime, options: Mapping[str, Any]) -> tuple[date | None, date | None]:
     explicit_from = _coerce_date(options.get("date_from")) if options.get("date_from") else None
     explicit_to = _coerce_date(options.get("date_to")) if options.get("date_to") else None
@@ -261,20 +145,31 @@ def run_market_features(runtime: PipelineRuntime, options: Mapping[str, Any]) ->
     if trade_date is None:
         logger.info("Market features skipped due to missing trade date")
         return {"status": "skipped", "reason": "no trade date"}
-    persist = bool(options.get("persist", False))
-    symbols = options.get("symbols")
-    symbol_list: Sequence[str] | None
-    if symbols:
-        if isinstance(symbols, (str, bytes)):
-            symbol_list = [str(symbols)]
+    defaults = get_config_for_date("market_features", trade_date)
+    persist_default = bool(defaults.get("persist", False))
+    persist = bool(options.get("persist", persist_default))
+
+    option_symbols = options.get("symbols")
+    symbol_candidates: list[str] = []
+    if option_symbols is not None:
+        if isinstance(option_symbols, (str, bytes)):
+            symbol_candidates.append(str(option_symbols))
         else:
-            symbol_list = [str(symbol) for symbol in symbols]
-    else:
-        symbol_list = list(runtime.symbols) if runtime.symbols else None
+            symbol_candidates.extend(str(symbol) for symbol in option_symbols)
+    elif runtime.symbols:
+        symbol_candidates.extend(runtime.symbols)
+
+    normalized_symbols = (
+        normalize_symbol_list(symbol_candidates) if symbol_candidates else None
+    )
     from flows.compute_offexchange_features import compute_offexchange_features
 
     logger.info("Computing market features for %s", trade_date)
-    rows = compute_offexchange_features(trade_date=trade_date, symbols=symbol_list, persist=persist)
+    rows = compute_offexchange_features(
+        trade_date=trade_date,
+        symbols=normalized_symbols,
+        persist=persist,
+    )
     return {
         "status": "ok",
         "trade_date": trade_date.isoformat(),
@@ -288,9 +183,13 @@ def run_embeddings(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Modu
 
     if _should_mock(runtime, options):
         logger.info("Embedding refresh mocked")
-        limit = int(options.get("limit", 0) or 0)
+        defaults = get_config_for_date("embeddings", runtime.trade_date)
+        limit_default = int(defaults.get("limit", 0) or 0)
+        limit = int(options.get("limit", limit_default) or limit_default)
         return {"status": "mocked", "reason": "mock enabled", "limit": limit}
-    limit = int(options.get("limit", 5) or 5)
+    defaults = get_config_for_date("embeddings", runtime.trade_date)
+    limit_default = int(defaults.get("limit", 5) or 5)
+    limit = int(options.get("limit", limit_default) or limit_default)
     from flows.embedding_flow import supabase_embedding_refresh
 
     logger.info("Refreshing embeddings with limit=%d", limit)
@@ -317,9 +216,34 @@ def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Mo
             symbol_list.append(str(extra_symbols))
         else:
             symbol_list.extend(str(sym) for sym in extra_symbols)
-    symbols = tuple(sorted({sym.strip().upper() for sym in symbol_list if sym}))
+    symbols = tuple(normalize_symbol_list(symbol_list))
 
-    feature_version = str(options.get("feature_version", OFFEX_FEATURE_VERSION))
+    defaults = get_config_for_date("fingerprints", trade_date)
+    window_default = int(defaults.get("window_days", 7) or 7)
+    window_days = int(options.get("window_days", window_default) or window_default)
+    window_start = (trade_date - timedelta(days=abs(window_days))).isoformat()
+    window_end = trade_date.isoformat()
+
+    target_default = int(defaults.get("fingerprint_size", PCA_COMPONENTS) or PCA_COMPONENTS)
+    target_dim = int(options.get("fingerprint_size", target_default) or target_default)
+
+    default_signal_name = str(defaults.get("signal_name", "insider_offexchange") or "insider_offexchange")
+    signal_name = str(options.get("signal_name", default_signal_name)).strip() or default_signal_name
+
+    default_signal_version = str(defaults.get("signal_version", "v1") or "v1")
+    signal_version = (
+        str(options.get("signal_version", default_signal_version)).strip() or default_signal_version
+    )
+
+    default_feature_version = str(
+        defaults.get("feature_version", OFFEX_FEATURE_VERSION) or OFFEX_FEATURE_VERSION
+    )
+    feature_version = (
+        str(options.get("feature_version", default_feature_version)).strip()
+        or default_feature_version
+    )
+
+    use_pca = bool(options.get("use_pca", defaults.get("use_pca", True)))
 
     try:
         client = get_supabase_client()
@@ -355,19 +279,11 @@ def run_fingerprints(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Mo
         logger.info("No FINRA features available for fingerprinting on %s", trade_date)
         return {"status": "skipped", "reason": "no features"}
 
-    window_days = int(options.get("window_days", 7) or 7)
-    window_start = (trade_date - timedelta(days=abs(window_days))).isoformat()
-    window_end = trade_date.isoformat()
-    target_dim = int(options.get("fingerprint_size", PCA_COMPONENTS) or PCA_COMPONENTS)
-    signal_name = str(options.get("signal_name", "insider_offexchange")).strip() or "insider_offexchange"
-    signal_version = str(options.get("signal_version", "v1")).strip() or "v1"
-    use_pca = bool(options.get("use_pca", True))
-
     feature_columns = ["short_vol_share", "short_exempt_share", "ats_share_of_total"]
     grouped: dict[str, list[dict[str, Any]]] = {}
     provenance_sources: dict[str, set[str]] = {}
     for row in feature_rows:
-        symbol = str(row.get("symbol", "")).strip().upper()
+        symbol = coerce_symbol_case(row.get("symbol"))
         if not symbol:
             continue
         payload = {
@@ -428,7 +344,10 @@ def run_scans(runtime: PipelineRuntime, options: Mapping[str, Any]) -> ModuleRes
 
     if _should_mock(runtime, options):
         logger.info("Similarity scans mocked")
-        return {"status": "mocked", "reason": "mock enabled", "top_k": options.get("top_k", 10)}
+        defaults = get_config_for_date("scans", runtime.trade_date)
+        top_default = int(defaults.get("top_k", 0) or 0)
+        top_k = int(options.get("top_k", top_default) or top_default)
+        return {"status": "mocked", "reason": "mock enabled", "top_k": top_k}
 
     trade_date = _coerce_date(options.get("trade_date")) if options.get("trade_date") else runtime.trade_date
     if trade_date is None:
@@ -440,9 +359,17 @@ def run_scans(runtime: PipelineRuntime, options: Mapping[str, Any]) -> ModuleRes
         logger.info("Similarity scans skipped due to missing symbols")
         return {"status": "skipped", "reason": "no symbols"}
 
-    signal_name = str(options.get("signal_name", "insider_offexchange")).strip() or "insider_offexchange"
-    signal_version = str(options.get("signal_version", "v1")).strip() or "v1"
-    top_k = int(options.get("top_k", 10) or 10)
+    defaults = get_config_for_date("scans", trade_date)
+    default_signal_name = str(defaults.get("signal_name", "insider_offexchange") or "insider_offexchange")
+    signal_name = str(options.get("signal_name", default_signal_name)).strip() or default_signal_name
+
+    default_signal_version = str(defaults.get("signal_version", "v1") or "v1")
+    signal_version = (
+        str(options.get("signal_version", default_signal_version)).strip() or default_signal_version
+    )
+
+    top_default = int(defaults.get("top_k", 10) or 10)
+    top_k = int(options.get("top_k", top_default) or top_default)
 
     try:
         client = get_supabase_client()
@@ -502,7 +429,9 @@ def run_backtest(runtime: PipelineRuntime, options: Mapping[str, Any]) -> Module
     if _should_mock(runtime, options):
         logger.info("Backtest execution mocked")
         return {"status": "mocked", "reason": "mock enabled"}
-    limit = int(options.get("limit", 5) or 5)
+    defaults = get_config_for_date("backtest", runtime.trade_date)
+    limit_default = int(defaults.get("limit", 5) or 5)
+    limit = int(options.get("limit", limit_default) or limit_default)
     from flows.backtest_flow import scheduled_backtest_runner
 
     logger.info("Executing backtests with limit=%d", limit)

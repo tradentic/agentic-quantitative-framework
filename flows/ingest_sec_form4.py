@@ -21,6 +21,7 @@ from framework.sec_client import (
     parse_form4_xml,
 )
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.symbols import coerce_symbol_case
 
 BATCH_SIZE = max(int(os.getenv("SEC_FORM4_BATCH_SIZE", "50")), 1)
 
@@ -36,7 +37,7 @@ def _build_filing_record(row: Form4IndexRow, parsed: ParsedForm4, xml_url: str) 
     accession = parsed.accession or row.accession_number
     filing_date = row.date_filed
     filed_at = filing_date.isoformat()
-    symbol = (parsed.symbol or "").strip().upper()
+    symbol = coerce_symbol_case(parsed.symbol)
     canonical = {
         "accession_number": accession,
         "cik": parsed.issuer_cik or row.cik,
@@ -66,7 +67,7 @@ def _build_transaction_records(parsed: ParsedForm4) -> list[dict[str, object]]:
                 "transaction_code": txn.code,
                 "shares": txn.shares,
                 "price": txn.price,
-                "symbol": parsed.symbol,
+                "symbol": coerce_symbol_case(parsed.symbol) or None,
                 "insider_name": parsed.reporter,
                 "reporter_cik": parsed.reporter_cik or None,
             }
