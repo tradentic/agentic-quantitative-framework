@@ -12,6 +12,7 @@ from prefect import flow, get_run_logger, task
 from framework.finra_client import FINRA_SHORT_VOLUME_MARKET, get_ats_week, get_short_volume
 from framework.provenance import OFFEX_FEATURE_VERSION, hash_bytes, record_provenance
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.guards import SkipStep, retry_on_timeout
 
 
 FINRA_BASE_URL = os.getenv("FINRA_BASE_URL", "https://cdn.finra.org/equity")
@@ -31,6 +32,7 @@ def _normalize_symbols(symbols: Iterable[str]) -> list[str]:
 
 
 @task
+@retry_on_timeout()
 def load_candidate_symbols(trade_date: date, symbols: Sequence[str] | None = None) -> list[str]:
     logger = get_run_logger()
     if symbols:
@@ -146,8 +148,7 @@ def compute_offexchange_features(
     symbol_future = load_candidate_symbols.submit(trade_date, symbols)
     candidate_symbols = symbol_future.result()
     if not candidate_symbols:
-        logger.info("No candidate symbols for %s", trade_date)
-        return []
+        raise SkipStep("No symbols available for off-exchange feature computation")
     week_end = _week_ending(trade_date)
     logger.info(
         "Computing off-exchange features for %d symbols on %s (week ending %s)",
@@ -158,6 +159,8 @@ def compute_offexchange_features(
     rows = [_compute_features(symbol, trade_date, week_end) for symbol in candidate_symbols]
     if persist:
         persist_features.submit(trade_date, week_end, rows).result()
+    if not rows:
+        raise SkipStep("No off-exchange features computed")
     return rows
 
 

@@ -20,6 +20,7 @@ from features.pca_fingerprint import (
 )
 from framework.provenance import hash_bytes
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.guards import SkipStep, ensure_not_empty
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +122,7 @@ def prepare_numeric_payload(
         return None, []
 
     if isinstance(numeric_features, pd.DataFrame):
-        df = numeric_features.copy()
+        df = ensure_not_empty(numeric_features, "numeric feature frame").copy()
         meta_cols = list(metadata_columns or [])
         if feature_columns is None:
             feature_columns = [
@@ -137,7 +138,7 @@ def prepare_numeric_payload(
 
     rows = list(numeric_features)
     if not rows:
-        return None, []
+        raise SkipStep("numeric feature records are empty")
 
     if feature_columns is None:
         raise ValueError("feature_columns must be provided for sequence inputs.")

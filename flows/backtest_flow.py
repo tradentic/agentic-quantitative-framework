@@ -7,17 +7,19 @@ from typing import Any
 
 from agents.tools import run_backtest
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.guards import SkipStep, retry_on_timeout
 from prefect import flow, get_run_logger, task
 
 
 @task
+@retry_on_timeout()
 def fetch_pending_backtests(limit: int = 5) -> list[dict[str, Any]]:
     logger = get_run_logger()
     try:
         client = get_supabase_client()
     except MissingSupabaseConfiguration:
-        logger.warning("Supabase credentials missing; returning empty backtest queue.")
-        return []
+        logger.warning("Supabase credentials missing; skipping backtest fetch.")
+        raise SkipStep("Supabase credentials are not configured")
     response = (
         client.table("backtest_requests")
         .select("*")
@@ -28,6 +30,8 @@ def fetch_pending_backtests(limit: int = 5) -> list[dict[str, Any]]:
     )
     requests = getattr(response, "data", []) or []
     logger.info("Fetched %d backtest requests", len(requests))
+    if not requests:
+        raise SkipStep("No pending backtest requests")
     return requests
 
 
@@ -55,7 +59,8 @@ def execute_backtest_request(request: dict[str, Any]) -> dict[str, Any]:
 def scheduled_backtest_runner(limit: int = 5) -> list[dict[str, Any]]:
     """Run pending backtests in batches."""
 
-    queue = fetch_pending_backtests(limit)
+    queue_future = fetch_pending_backtests.submit(limit)
+    queue = queue_future.result()
     results: list[dict[str, Any]] = []
     for request in queue:
         results.append(execute_backtest_request(request))

@@ -16,6 +16,7 @@ from features.pca_fingerprint import PCA_COMPONENTS
 
 from framework.provenance import OFFEX_FEATURE_VERSION
 from framework.supabase_client import MissingSupabaseConfiguration, get_supabase_client
+from utils.guards import SkipStep
 from use_cases.base import StrategyUseCase, UseCaseRequest
 
 logger = logging.getLogger(__name__)
@@ -571,6 +572,10 @@ class InsiderTradingPipeline:
                 continue
             try:
                 results[module_config.name] = step.execute(runtime, module_config.options)
+            except SkipStep as exc:
+                logger.info("Module %s skipped: %s", module_config.name, exc)
+                results[module_config.name] = {"status": "skipped", "reason": str(exc)}
+                continue
             except Exception as exc:  # pragma: no cover - logging path
                 logger.exception("Module %s failed during execution", module_config.name)
                 results[module_config.name] = {"status": "error", "error": str(exc)}

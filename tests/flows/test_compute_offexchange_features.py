@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from flows.compute_offexchange_features import compute_offexchange_features, persist_features
+from utils.guards import SkipStep
 
 
 class _DummyTable:
@@ -99,3 +100,24 @@ def test_flow_returns_rows_without_persist(monkeypatch: pytest.MonkeyPatch):
         trade_date=date(2024, 12, 30), symbols=["ACME"], persist=False
     )
     assert isinstance(rows, list)
+
+
+def test_flow_raises_skip_when_no_symbols(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "flows.compute_offexchange_features.get_run_logger",
+        lambda: logging.getLogger("test"),
+    )
+
+    class _Future:
+        def result(self):
+            return []
+
+    monkeypatch.setattr(
+        "flows.compute_offexchange_features.load_candidate_symbols.submit",
+        lambda *_, **__: _Future(),
+    )
+
+    with pytest.raises(SkipStep):
+        compute_offexchange_features.fn(
+            trade_date=date(2024, 12, 30), symbols=None, persist=False
+        )
