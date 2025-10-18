@@ -71,6 +71,13 @@ deployments:
       persist: false
     schedule:
       # cron: "*/30 13-20 * * 1-5"
+  - name: monitor-nvda-insider
+    flow_name: monitor-nvda-insider
+    entrypoint: flows/monitor_nvda_insider.py:monitor_nvda_insider
+    work_pool:
+      <<: *docker_pool
+    schedule:
+      cron: "0 21 * * 1-5"
 #
 # Additional experimental flows (fingerprint vectorization, similarity scans, manual backtests)
 # require interactive parameter input and have been removed from the automatic deployment set.
