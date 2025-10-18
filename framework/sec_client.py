@@ -6,11 +6,19 @@ import gzip
 import io
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Iterator, Iterable
+from typing import Iterable, Iterator
 
 import requests
+
+from framework.sec_parse import (
+    ReportingOwner,
+    find_text,
+    parse_filing_date,
+    parse_issuer_name,
+    parse_reporting_owners,
+)
 
 EDGAR_ARCHIVES_BASE = "https://www.sec.gov/Archives/"
 DAILY_INDEX_BASE = f"{EDGAR_ARCHIVES_BASE}edgar/daily-index"
@@ -58,6 +66,9 @@ class ParsedForm4:
     issuer_cik: str
     reporter_cik: str
     accession: str
+    issuer_name: str | None = None
+    filing_date: date | None = None
+    reporting_owners: tuple[ReportingOwner, ...] = tuple()
 
 
 _session: requests.Session | None = None
@@ -192,10 +203,10 @@ def _iter_transactions(root: Iterable) -> Iterator[Form4Transaction]:
     for table_name in ("nonDerivativeTransaction", "derivativeTransaction"):
         for node in root.iter():
             if isinstance(getattr(node, "tag", None), str) and node.tag.split("}")[-1] == table_name:
-                date_text = _find_text(node, "transactionDate")
-                code = _find_text(node, "transactionCode")
-                shares = _coerce_float(_find_text(node, "transactionShares"))
-                price = _coerce_float(_find_text(node, "transactionPricePerShare"))
+                date_text = find_text(node, "transactionDate")
+                code = find_text(node, "transactionCode")
+                shares = _coerce_float(find_text(node, "transactionShares"))
+                price = _coerce_float(find_text(node, "transactionPricePerShare"))
                 if not date_text or not code:
                     continue
                 try:
@@ -214,30 +225,20 @@ def _coerce_float(value: str | None) -> float | None:
         return None
 
 
-def _find_text(node, tag: str) -> str | None:
-    for child in getattr(node, "iter", lambda: [])():
-        if isinstance(getattr(child, "tag", None), str) and child.tag.split("}")[-1] == tag:
-            text = (child.text or "").strip()
-            if text:
-                return text
-            for sub in getattr(child, "iter", lambda: [])():
-                text = (getattr(sub, "text", "") or "").strip()
-                if text:
-                    return text
-    return None
-
-
 def parse_form4_xml(xml_bytes: bytes) -> ParsedForm4:
     """Parse a Form 4 XML document into the normalized payload used by the framework."""
 
     import xml.etree.ElementTree as ET
 
     root = ET.fromstring(xml_bytes)
-    symbol = _find_text(root, "issuerTradingSymbol") or ""
-    reporter = _find_text(root, "rptOwnerName") or ""
-    issuer_cik = _find_text(root, "issuerCik") or ""
-    reporter_cik = _find_text(root, "rptOwnerCik") or ""
-    accession = _find_text(root, "accessionNumber") or ""
+    symbol = find_text(root, "issuerTradingSymbol") or ""
+    reporter = find_text(root, "rptOwnerName") or ""
+    issuer_cik = find_text(root, "issuerCik") or ""
+    reporter_cik = find_text(root, "rptOwnerCik") or ""
+    accession = find_text(root, "accessionNumber") or ""
+    issuer_name = parse_issuer_name(root)
+    filing_date = parse_filing_date(root)
+    reporting_owners = parse_reporting_owners(root)
     transactions = list(_iter_transactions(root))
     return ParsedForm4(
         symbol=symbol,
@@ -246,6 +247,9 @@ def parse_form4_xml(xml_bytes: bytes) -> ParsedForm4:
         issuer_cik=issuer_cik,
         reporter_cik=reporter_cik,
         accession=accession,
+        issuer_name=issuer_name,
+        filing_date=filing_date,
+        reporting_owners=reporting_owners,
     )
 
 
